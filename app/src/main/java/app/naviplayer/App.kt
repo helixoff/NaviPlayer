@@ -163,7 +163,7 @@ fun AppScaffold(api: SubsonicApi, store: SessionStore, holder: PlayerHolder, cre
                     }
                 } else when (tab) {
                     0 -> HomeScreen(
-                        api, creds.user, avatarUri, holder, home, homeLoading, homeError, open,
+                        api, creds.user, avatarUri, home, homeLoading, homeError, open,
                         onRefresh = { store.clearCache(); home = null; homeVersion++ },
                         onSearch = { stack.clear(); tab = 1 },
                     )

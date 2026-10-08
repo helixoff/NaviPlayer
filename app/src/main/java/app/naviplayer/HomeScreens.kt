@@ -16,6 +16,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.QueueMusic
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
+import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -28,146 +29,138 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.delay
-import kotlinx.coroutines.launch
 
 class ChipData(val title: String, val cover: String?, val icon: ImageVector?, val onClick: () -> Unit)
 
 // ───────────────────────── home ─────────────────────────
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun HomeScreen(
-    api: SubsonicApi, user: String, avatarUri: String?, holder: PlayerHolder, data: HomeData?,
+    api: SubsonicApi, user: String, avatarUri: String?, data: HomeData?,
     loading: Boolean, error: String?,
     onOpen: (Dest) -> Unit, onRefresh: () -> Unit, onSearch: () -> Unit,
 ) {
-    val scope = rememberCoroutineScope()
+    var refreshing by remember { mutableStateOf(false) }
+    LaunchedEffect(loading) {
+        if (!loading) refreshing = false
+    }
 
-    LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = 24.dp)) {
-        item {
-            val heroShape = RoundedCornerShape(38.dp)
-            Box(
-                Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 12.dp)
-                    .clip(heroShape)
-                    .background(
-                        Brush.linearGradient(
-                            listOf(
-                                MaterialTheme.colorScheme.primaryContainer,
-                                MaterialTheme.colorScheme.tertiaryContainer,
+    PullToRefreshBox(
+        isRefreshing = refreshing,
+        onRefresh = {
+            refreshing = true
+            onRefresh()
+        },
+        modifier = Modifier.fillMaxSize(),
+    ) {
+        LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = 24.dp)) {
+            item {
+                val heroShape = RoundedCornerShape(38.dp)
+                Box(
+                    Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 12.dp)
+                        .clip(heroShape)
+                        .background(
+                            Brush.linearGradient(
+                                listOf(
+                                    MaterialTheme.colorScheme.primaryContainer,
+                                    MaterialTheme.colorScheme.tertiaryContainer,
+                                ),
                             ),
-                        ),
+                        )
+                ) {
+                    Box(
+                        Modifier.size(170.dp).align(Alignment.TopEnd).offset(x = 48.dp, y = (-54).dp)
+                            .clip(RoundedCornerShape(50)).background(MaterialTheme.colorScheme.primary.copy(alpha = 0.12f)),
                     )
-            ) {
-                Box(
-                    Modifier.size(170.dp).align(Alignment.TopEnd).offset(x = 48.dp, y = (-54).dp)
-                        .clip(RoundedCornerShape(50)).background(MaterialTheme.colorScheme.primary.copy(alpha = 0.12f)),
-                )
-                Box(
-                    Modifier.size(110.dp).align(Alignment.BottomEnd).offset(x = 30.dp, y = 42.dp)
-                        .clip(expressiveShape(48.dp, 18.dp)).background(MaterialTheme.colorScheme.tertiary.copy(alpha = 0.14f)),
-                )
-                Column(Modifier.padding(24.dp)) {
-                    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                        Surface(
-                            shape = RoundedCornerShape(50),
-                            color = MaterialTheme.colorScheme.surface.copy(alpha = 0.72f),
-                        ) {
-                            Row(Modifier.padding(horizontal = 14.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
-                                Icon(Icons.Default.Waves, null, Modifier.size(17.dp))
-                                Spacer(Modifier.width(7.dp))
-                                Text("NaviPlayer", style = MaterialTheme.typography.labelLarge)
+                    Box(
+                        Modifier.size(110.dp).align(Alignment.BottomEnd).offset(x = 30.dp, y = 42.dp)
+                            .clip(expressiveShape(48.dp, 18.dp)).background(MaterialTheme.colorScheme.tertiary.copy(alpha = 0.14f)),
+                    )
+                    Column(Modifier.padding(24.dp)) {
+                        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                            Surface(
+                                shape = RoundedCornerShape(50),
+                                color = MaterialTheme.colorScheme.surface.copy(alpha = 0.72f),
+                            ) {
+                                Row(Modifier.padding(horizontal = 14.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+                                    Icon(Icons.Default.Waves, null, Modifier.size(17.dp))
+                                    Spacer(Modifier.width(7.dp))
+                                    Text("NaviPlayer", style = MaterialTheme.typography.labelLarge)
+                                }
+                            }
+                            Spacer(Modifier.weight(1f))
+                            Box(
+                                Modifier.size(48.dp).clip(RoundedCornerShape(50))
+                                    .clickable { onOpen(Dest.Profile) },
+                            ) {
+                                UserAvatar(user, avatarUri, Modifier.fillMaxSize())
                             }
                         }
-                        Spacer(Modifier.weight(1f))
-                        Box(
-                            Modifier.size(48.dp).clip(RoundedCornerShape(50))
-                                .clickable { onOpen(Dest.Profile) },
+                        Spacer(Modifier.height(26.dp))
+                        Text(timeLabel(), color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.78f), style = MaterialTheme.typography.titleLarge)
+                        Text(user, color = MaterialTheme.colorScheme.onPrimaryContainer, style = MaterialTheme.typography.displayMedium)
+                    }
+                }
+            }
+
+            item { SearchPill(onSearch) }
+
+            if (loading) {
+                item { LoadingCards() }
+            } else if (error != null) {
+                item { MessageCard(Icons.Default.CloudOff, "music is out of reach", "$error\nPull down to try again.") }
+            } else if (data == null) {
+                item { MessageCard(Icons.Default.LibraryMusic, "nothing here yet", "Pull down to load your library.") }
+            } else {
+                val chips = buildList {
+                    add(ChipData("all tracks", null, Icons.Default.Shuffle) { onOpen(Dest.AllTracks) })
+                    add(ChipData("loose tracks", null, Icons.Default.MusicNote) { onOpen(Dest.Loose) })
+                    data.recent.take(4).forEach { a -> add(ChipData(a.name, a.coverArt, null) { onOpen(a.dest()) }) }
+                }
+
+                item { SectionHeader("jump back in") }
+                chips.chunked(2).forEach { pair ->
+                    item {
+                        Row(
+                            Modifier.fillMaxWidth().padding(horizontal = Dim.Page, vertical = 5.dp),
+                            horizontalArrangement = Arrangement.spacedBy(10.dp),
                         ) {
-                            UserAvatar(user, avatarUri, Modifier.fillMaxSize())
-                        }
-                    }
-                    Spacer(Modifier.height(26.dp))
-                    Text(timeLabel(), color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.78f), style = MaterialTheme.typography.titleLarge)
-                    Text(user, color = MaterialTheme.colorScheme.onPrimaryContainer, style = MaterialTheme.typography.displayMedium)
-                    Spacer(Modifier.height(24.dp))
-                    Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                        Button(onClick = {
-                            scope.launch {
-                                try {
-                                    val s = api.randomSongs(100)
-                                    if (s.isNotEmpty()) holder.play(s, 0, api, "shuffle all", true)
-                                } catch (e: CancellationException) {
-                                    throw e
-                                } catch (e: Exception) { }
-                            }
-                        }, shape = RoundedCornerShape(22.dp)) {
-                            Icon(Icons.Default.Shuffle, null)
-                            Spacer(Modifier.width(8.dp))
-                            Text("shuffle")
-                        }
-                        FilledTonalIconButton(onClick = onRefresh, modifier = Modifier.size(48.dp)) {
-                            Icon(Icons.Default.Refresh, "refresh")
+                            pair.forEach { JumpChip(api, it, Modifier.weight(1f)) }
+                            if (pair.size == 1) Spacer(Modifier.weight(1f))
                         }
                     }
                 }
-            }
-        }
 
-        item { SearchPill(onSearch) }
-
-        if (loading) {
-            item { LoadingCards() }
-        } else if (error != null) {
-            item { MessageCard(Icons.Default.CloudOff, "music is out of reach", error, "try again", onRefresh) }
-        } else if (data == null) {
-            item { MessageCard(Icons.Default.LibraryMusic, "nothing here yet", "Refresh to load your library.", "refresh", onRefresh) }
-        } else {
-            val chips = buildList {
-                add(ChipData("all tracks", null, Icons.Default.Shuffle) { onOpen(Dest.AllTracks) })
-                add(ChipData("loose tracks", null, Icons.Default.MusicNote) { onOpen(Dest.Loose) })
-                data.recent.take(4).forEach { a -> add(ChipData(a.name, a.coverArt, null) { onOpen(a.dest()) }) }
-            }
-
-            item { SectionHeader("jump back in") }
-            chips.chunked(2).forEach { pair ->
-                item {
-                    Row(
-                        Modifier.fillMaxWidth().padding(horizontal = Dim.Page, vertical = 5.dp),
-                        horizontalArrangement = Arrangement.spacedBy(10.dp),
-                    ) {
-                        pair.forEach { JumpChip(api, it, Modifier.weight(1f)) }
-                        if (pair.size == 1) Spacer(Modifier.weight(1f))
+                if (data.artists.isNotEmpty()) {
+                    item { SectionHeader("artists") }
+                    item {
+                        LazyRow(contentPadding = PaddingValues(horizontal = Dim.Page), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                            items(data.artists) { a -> ArtistBubble(a, api) { onOpen(Dest.ArtistD(a.id, a.name)) } }
+                        }
                     }
                 }
-            }
 
-            if (data.artists.isNotEmpty()) {
-                item { SectionHeader("artists") }
-                item {
-                    LazyRow(contentPadding = PaddingValues(horizontal = Dim.Page), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                        items(data.artists) { a -> ArtistBubble(a, api) { onOpen(Dest.ArtistD(a.id, a.name)) } }
+                if (data.mixes.isNotEmpty()) {
+                    item { SectionHeader("made for you") }
+                    item {
+                        LazyRow(contentPadding = PaddingValues(horizontal = Dim.Page), horizontalArrangement = Arrangement.spacedBy(14.dp)) {
+                            items(data.mixes) { m -> MixCard(api, m) { onOpen(Dest.MixD(m)) } }
+                        }
                     }
                 }
-            }
 
-            if (data.mixes.isNotEmpty()) {
-                item { SectionHeader("made for you") }
-                item {
-                    LazyRow(contentPadding = PaddingValues(horizontal = Dim.Page), horizontalArrangement = Arrangement.spacedBy(14.dp)) {
-                        items(data.mixes) { m -> MixCard(api, m) { onOpen(Dest.MixD(m)) } }
-                    }
-                }
-            }
-
-            if (data.albumsToday.isNotEmpty()) {
-                item { SectionHeader("albums for today") }
-                item {
-                    LazyRow(contentPadding = PaddingValues(horizontal = Dim.Page), horizontalArrangement = Arrangement.spacedBy(14.dp)) {
-                        items(data.albumsToday) { a ->
-                            Column(Modifier.width(220.dp).clickable { onOpen(a.dest()) }) {
-                                Cover(api, a.coverArt, Modifier.size(220.dp), Dim.HeroRadius)
-                                Spacer(Modifier.height(8.dp))
-                                Text(a.name, maxLines = 1, overflow = TextOverflow.Ellipsis, color = Pal.Text, style = MaterialTheme.typography.titleMedium)
-                                Text(a.artist, maxLines = 1, overflow = TextOverflow.Ellipsis, color = Pal.Subtle, style = MaterialTheme.typography.bodyMedium)
+                if (data.albumsToday.isNotEmpty()) {
+                    item { SectionHeader("albums for today") }
+                    item {
+                        LazyRow(contentPadding = PaddingValues(horizontal = Dim.Page), horizontalArrangement = Arrangement.spacedBy(14.dp)) {
+                            items(data.albumsToday) { a ->
+                                Column(Modifier.width(220.dp).clickable { onOpen(a.dest()) }) {
+                                    Cover(api, a.coverArt, Modifier.size(220.dp), Dim.HeroRadius)
+                                    Spacer(Modifier.height(8.dp))
+                                    Text(a.name, maxLines = 1, overflow = TextOverflow.Ellipsis, color = Pal.Text, style = MaterialTheme.typography.titleMedium)
+                                    Text(a.artist, maxLines = 1, overflow = TextOverflow.Ellipsis, color = Pal.Subtle, style = MaterialTheme.typography.bodyMedium)
+                                }
                             }
                         }
                     }

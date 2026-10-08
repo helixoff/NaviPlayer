@@ -1,6 +1,16 @@
 package app.naviplayer
 
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.AnimatedContentTransitionScope
+import androidx.compose.animation.ContentTransform
 import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.scaleIn
+import androidx.compose.animation.scaleOut
+import androidx.compose.animation.slideInHorizontally
+import androidx.compose.animation.slideOutHorizontally
+import androidx.compose.animation.togetherWith
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.CubicBezierEasing
 import androidx.compose.animation.core.snap
@@ -59,7 +69,14 @@ import kotlin.math.sin
 @Composable
 fun MiniPlayer(holder: PlayerHolder, onOpen: () -> Unit) {
     val meta = holder.current?.mediaMetadata
-    val col = holder.colors
+    val col = animateNowColors(holder.colors)
+    val track = PlayerTrackPresentation(
+        id = holder.current?.mediaId.orEmpty(),
+        title = meta?.title?.toString().orEmpty(),
+        artist = meta?.artist?.toString().orEmpty(),
+        artworkUrl = meta?.artworkUri?.toString(),
+        queueIndex = holder.currentIndex,
+    )
     val progress = if (holder.duration > 0) holder.position.toFloat() / holder.duration else 0f
     val smoothProgress = animateFloatAsState(
         targetValue = progress,
@@ -80,11 +97,21 @@ fun MiniPlayer(holder: PlayerHolder, onOpen: () -> Unit) {
             },
     ) {
         Row(Modifier.padding(start = 10.dp, end = 8.dp, top = 10.dp, bottom = 14.dp), verticalAlignment = Alignment.CenterVertically) {
-            CoverUrl(meta?.artworkUri?.toString(), Modifier.size(52.dp), 14.dp)
-            Spacer(Modifier.width(14.dp))
-            Column(Modifier.weight(1f)) {
-                Text(meta?.title?.toString() ?: "", color = Color.White, style = MaterialTheme.typography.titleMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                Text(meta?.artist?.toString() ?: "", color = Color.White.copy(alpha = 0.8f), style = MaterialTheme.typography.bodyMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            AnimatedContent(
+                targetState = track,
+                modifier = Modifier.weight(1f),
+                transitionSpec = { miniTrackTransition() },
+                contentKey = { it.id },
+                label = "miniTrackChange",
+            ) { shownTrack ->
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    CoverUrl(shownTrack.artworkUrl, Modifier.size(52.dp), 14.dp)
+                    Spacer(Modifier.width(14.dp))
+                    Column(Modifier.weight(1f)) {
+                        Text(shownTrack.title, color = Color.White, style = MaterialTheme.typography.titleMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                        Text(shownTrack.artist, color = Color.White.copy(alpha = 0.8f), style = MaterialTheme.typography.bodyMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    }
+                }
             }
             Box(
                 Modifier.size(44.dp).clip(RoundedCornerShape(50)).background(col.accent).clickable { holder.togglePlay() },
@@ -167,7 +194,66 @@ private fun SeekBar(
 }
 
 private const val ProgressAnimationMillis = 500
+private const val TrackChangeAnimationMillis = 360
+private const val ColorChangeAnimationMillis = 700
 private val WavyProgressEasing = CubicBezierEasing(0.2f, 0f, 0f, 1f)
+private val TrackChangeEasing = CubicBezierEasing(0.2f, 0f, 0f, 1f)
+
+private data class PlayerTrackPresentation(
+    val id: String,
+    val title: String,
+    val artist: String,
+    val artworkUrl: String?,
+    val queueIndex: Int,
+)
+
+@Composable
+private fun animateNowColors(target: NowColors): NowColors {
+    val animation = tween<Color>(ColorChangeAnimationMillis, easing = TrackChangeEasing)
+    val container by animateColorAsState(target.container, animation, label = "playerContainerColor")
+    val accent by animateColorAsState(target.accent, animation, label = "playerAccentColor")
+    val top by animateColorAsState(target.top, animation, label = "playerTopColor")
+    val bottom by animateColorAsState(target.bottom, animation, label = "playerBottomColor")
+    return NowColors(container, accent, top, bottom)
+}
+
+private fun AnimatedContentTransitionScope<PlayerTrackPresentation>.trackDirection(): Int =
+    if (targetState.queueIndex >= initialState.queueIndex) 1 else -1
+
+private fun AnimatedContentTransitionScope<PlayerTrackPresentation>.miniTrackTransition(): ContentTransform {
+    val direction = trackDirection()
+    return (
+        slideInHorizontally(tween(TrackChangeAnimationMillis, easing = TrackChangeEasing)) { direction * it / 5 } +
+            fadeIn(tween(TrackChangeAnimationMillis))
+        ) togetherWith (
+        slideOutHorizontally(tween(TrackChangeAnimationMillis, easing = TrackChangeEasing)) { -direction * it / 5 } +
+            fadeOut(tween(260))
+        )
+}
+
+private fun AnimatedContentTransitionScope<PlayerTrackPresentation>.artworkTransition(): ContentTransform {
+    val direction = trackDirection()
+    return (
+        slideInHorizontally(tween(TrackChangeAnimationMillis, easing = TrackChangeEasing)) { direction * it / 8 } +
+            scaleIn(tween(TrackChangeAnimationMillis, easing = TrackChangeEasing), initialScale = 0.96f) +
+            fadeIn(tween(TrackChangeAnimationMillis))
+        ) togetherWith (
+        slideOutHorizontally(tween(300, easing = TrackChangeEasing)) { -direction * it / 8 } +
+            scaleOut(tween(300, easing = TrackChangeEasing), targetScale = 0.96f) +
+            fadeOut(tween(260))
+        )
+}
+
+private fun AnimatedContentTransitionScope<PlayerTrackPresentation>.headingTransition(): ContentTransform {
+    val direction = trackDirection()
+    return (
+        slideInHorizontally(tween(TrackChangeAnimationMillis, easing = TrackChangeEasing)) { direction * it / 7 } +
+            fadeIn(tween(TrackChangeAnimationMillis))
+        ) togetherWith (
+        slideOutHorizontally(tween(280, easing = TrackChangeEasing)) { -direction * it / 7 } +
+            fadeOut(tween(240))
+        )
+}
 
 @Composable
 private fun rememberWavePhase(isAnimating: Boolean): FloatState {
@@ -243,9 +329,16 @@ private fun DrawScope.drawWavyProgress(
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun NowPlayingScreen(api: SubsonicApi, holder: PlayerHolder, onBack: () -> Unit) {
-    val col = holder.colors
+    val col = animateNowColors(holder.colors)
     val meta = holder.current?.mediaMetadata
     val songId = holder.current?.mediaId
+    val track = PlayerTrackPresentation(
+        id = songId.orEmpty(),
+        title = meta?.title?.toString().orEmpty(),
+        artist = meta?.artist?.toString().orEmpty(),
+        artworkUrl = meta?.artworkUri?.toString(),
+        queueIndex = holder.currentIndex,
+    )
     var dragging by remember { mutableStateOf<Float?>(null) }
     var sheet by remember { mutableStateOf<String?>(null) }
     var showLyrics by remember { mutableStateOf(false) }
@@ -308,10 +401,10 @@ fun NowPlayingScreen(api: SubsonicApi, holder: PlayerHolder, onBack: () -> Unit)
             if (showLyrics) {
                 LyricsPane(api, songId, holder, Modifier.weight(1f).fillMaxWidth().padding(vertical = 8.dp))
             } else {
-                PlayerArtwork(meta?.artworkUri?.toString(), col, Modifier.weight(1f))
+                PlayerArtwork(track, col, Modifier.weight(1f))
             }
 
-            TrackHeading(meta?.title?.toString().orEmpty(), meta?.artist?.toString().orEmpty())
+            TrackHeading(track)
 
             Spacer(Modifier.height(6.dp))
             SeekBar(
@@ -357,7 +450,7 @@ fun NowPlayingScreen(api: SubsonicApi, holder: PlayerHolder, onBack: () -> Unit)
 }
 
 @Composable
-private fun PlayerArtwork(url: String?, colors: NowColors, modifier: Modifier = Modifier) {
+private fun PlayerArtwork(track: PlayerTrackPresentation, colors: NowColors, modifier: Modifier = Modifier) {
     BoxWithConstraints(
         modifier.fillMaxWidth().padding(vertical = 12.dp),
         contentAlignment = Alignment.Center,
@@ -370,28 +463,44 @@ private fun PlayerArtwork(url: String?, colors: NowColors, modifier: Modifier = 
                     .blur(30.dp, edgeTreatment = BlurredEdgeTreatment.Unbounded)
                     .background(colors.accent, RoundedCornerShape(38.dp)),
             )
-            CoverUrl(url, Modifier.matchParentSize(), 32.dp)
+            AnimatedContent(
+                targetState = track,
+                modifier = Modifier.matchParentSize().clip(RoundedCornerShape(32.dp)),
+                transitionSpec = { artworkTransition() },
+                contentKey = { it.id },
+                label = "artworkChange",
+            ) { shownTrack ->
+                CoverUrl(shownTrack.artworkUrl, Modifier.fillMaxSize(), 32.dp)
+            }
         }
     }
 }
 
 @Composable
-private fun TrackHeading(title: String, artist: String) {
-    Column(Modifier.fillMaxWidth()) {
-        Text(
-            title,
-            color = Color.White,
-            style = MaterialTheme.typography.headlineMedium,
-            maxLines = 2,
-            overflow = TextOverflow.Ellipsis,
-        )
-        Text(
-            artist,
-            color = Color.White.copy(alpha = 0.85f),
-            style = MaterialTheme.typography.bodyLarge,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
-        )
+private fun TrackHeading(track: PlayerTrackPresentation) {
+    AnimatedContent(
+        targetState = track,
+        modifier = Modifier.fillMaxWidth(),
+        transitionSpec = { headingTransition() },
+        contentKey = { it.id },
+        label = "trackHeadingChange",
+    ) { shownTrack ->
+        Column(Modifier.fillMaxWidth()) {
+            Text(
+                shownTrack.title,
+                color = Color.White,
+                style = MaterialTheme.typography.headlineMedium,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis,
+            )
+            Text(
+                shownTrack.artist,
+                color = Color.White.copy(alpha = 0.85f),
+                style = MaterialTheme.typography.bodyLarge,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+        }
     }
 }
 
