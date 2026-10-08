@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Светлый вариант; тёмный лежит в values-night. Фон окна совпадает с темой, чтобы не было вспышки при старте. -->
+    <style name="Theme.NaviPlayer" parent="android:Theme.Material.Light.NoActionBar">
+        <item name="android:windowBackground">#FEF7FF</item>
+        <item name="android:statusBarColor">@android:color/transparent</item>
+        <item name="android:navigationBarColor">@android:color/transparent</item>
+    </style>
+</resources>
