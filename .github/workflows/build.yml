@@ -58,7 +58,8 @@ jobs:
 
       - name: Show compile errors
         if: failure()
-        run: grep -E "^e: " build.log | head -60 || true
+        run: |
+          grep -E "^e: " build.log | head -60 || true
 
       - name: Keep APK as workflow artifact
         uses: actions/upload-artifact@v4
