@@ -28,7 +28,13 @@ dependencies {
     implementation("org.json:json:20240303")
     implementation("io.coil-kt.coil3:coil-compose:3.0.4")
     implementation("io.coil-kt.coil3:coil-network-okhttp:3.0.4")
-    implementation("com.github.MinnDevelopment:java-discord-rpc:v2.0.2")
+    implementation("com.github.MinnDevelopment:java-discord-rpc:v2.0.2") {
+        // The published POM points at the retired club.minnced coordinates.
+        // Keep the Java bindings, but source the native Discord library from
+        // its maintained JitPack coordinates instead.
+        exclude(group = "club.minnced", module = "discord-rpc-release")
+    }
+    runtimeOnly("com.github.MinnDevelopment:discord-rpc-release:3.4.0")
 }
 
 compose.desktop {
