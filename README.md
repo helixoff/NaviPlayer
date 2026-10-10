@@ -1,8 +1,8 @@
 # NaviPlayer
 
-NaviPlayer is a focused Android client for your own [Navidrome](https://www.navidrome.org/) music server. It keeps the familiar Subsonic-compatible backend while giving playback a native Material 3 interface, adaptive colours and a compact, artwork-led now-playing screen.
+NaviPlayer is a focused Android, Linux and Windows client for your own [Navidrome](https://www.navidrome.org/) music server. It keeps the familiar Subsonic-compatible backend while giving playback a native Material 3 interface, adaptive colours and artwork-led player screens.
 
-This repository contains only the Android application; server-side tooling and personal automation are intentionally out of scope.
+This repository contains only client applications; server-side tooling and personal automation are intentionally out of scope.
 
 ## Features
 
@@ -17,6 +17,14 @@ This repository contains only the Android application; server-side tooling and p
 - Local profile avatar that stays on the device and survives sign-out
 - Bundled Google Sans typography for consistent rendering
 
+### Desktop
+
+- A wide layout designed for mouse and keyboard
+- Recent albums, random recommendations, server search and album pages
+- Cover artwork, queue navigation, playback and seeking
+- Native `.deb` packages for Linux and `.msi` installers for Windows
+- Optional Discord Rich Presence with the current song and playback time
+
 ## Requirements
 
 - Android 8.0 (API 26) or newer
@@ -26,7 +34,7 @@ On the sign-in screen, enter the full server address, for example `https://music
 
 ## Install
 
-Download an APK from [GitHub Releases](../../releases). Each automated build has its own versioned release and a short explanation of the changes included in it.
+Download an APK, Linux `.deb` or Windows `.msi` from [GitHub Releases](../../releases). Android and desktop builds use separate versioned releases, each with a short explanation of the changes included in it.
 
 Android may ask permission to install apps from your browser or file manager. Existing official NaviPlayer installs can be updated in place because release APKs keep the same signing identity.
 
@@ -35,10 +43,36 @@ Android may ask permission to install apps from your browser or file manager. Ex
 Open the project in Android Studio with JDK 17, or run:
 
 ```bash
-./gradlew assembleDebug
+# Android APK
+./gradlew :app:assembleDebug
+
+# Run the desktop app on the current OS
+./gradlew :desktop:run
+
+# Create a native desktop installer for the current OS
+./gradlew :desktop:packageDistributionForCurrentOS
 ```
 
 The debug APK is written to `app/build/outputs/apk/debug/` and uses Android's standard debug signing key.
+
+## Discord Rich Presence
+
+Desktop Rich Presence is deliberately optional and never blocks playback. Create an application in the
+[Discord Developer Portal](https://discord.com/developers/applications), copy its Application ID and add Rich
+Presence images named `naviplayer`, `playing` and `paused`. Then start NaviPlayer with the application ID:
+
+```bash
+NAVIPLAYER_DISCORD_APP_ID=123456789012345678 naviplayer
+```
+
+On Windows PowerShell:
+
+```powershell
+$env:NAVIPLAYER_DISCORD_APP_ID = "123456789012345678"
+Start-Process NaviPlayer
+```
+
+If Discord is closed or IPC is unavailable, NaviPlayer continues normally.
 
 ## Release signing
 
@@ -51,9 +85,12 @@ Release builds never store a signing key or passwords in this repository. The Gr
 
 The GitHub Actions workflow restores the key from the `ANDROID_KEYSTORE_BASE64` repository secret and reads the remaining values from secrets with matching names. A manual workflow run can include a custom “why this update” note; otherwise release notes are generated from commit subjects since the previous tag.
 
+The desktop workflow builds Linux and Windows in parallel. Android tags use `v2.1.N`; desktop releases use
+`desktop-v2.1.N`, so neither platform replaces releases belonging to another one.
+
 ## Privacy
 
-Credentials and the optional profile image are stored locally by Android. The avatar is not uploaded by NaviPlayer. Music, artwork and lyrics are requested directly from the server address you provide.
+Credentials and the optional profile image are stored locally on the device. The avatar is not uploaded by NaviPlayer. Music, artwork and lyrics are requested directly from the server address you provide.
 
 ## License
 

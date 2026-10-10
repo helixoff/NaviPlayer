@@ -1,0 +1,107 @@
+name: Build Desktop
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "desktop/**"
+      - "settings.gradle.kts"
+      - "build.gradle.kts"
+      - "gradle/**"
+      - "gradle.properties"
+      - "gradlew"
+      - "gradlew.bat"
+      - ".github/workflows/desktop.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+env:
+  NAVIPLAYER_VERSION: 2.1.${{ github.run_number }}
+
+jobs:
+  package:
+    name: Package ${{ matrix.name }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: Linux
+            os: ubuntu-latest
+            task: packageDeb
+            artifact: NaviPlayer-Linux
+            files: desktop/build/compose/binaries/main/deb/*.deb
+          - name: Windows
+            os: windows-latest
+            task: packageMsi
+            artifact: NaviPlayer-Windows
+            files: desktop/build/compose/binaries/main/msi/*.msi
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+
+      - name: Make Gradle executable
+        if: runner.os != 'Windows'
+        run: chmod +x gradlew
+
+      - name: Build native package
+        shell: bash
+        run: ./gradlew :desktop:${{ matrix.task }} --no-daemon --console=plain
+
+      - name: Upload package
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.artifact }}-${{ env.NAVIPLAYER_VERSION }}
+          path: ${{ matrix.files }}
+          if-no-files-found: error
+
+  release:
+    name: Publish desktop release
+    needs: package
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: NaviPlayer-*-${{ env.NAVIPLAYER_VERSION }}
+          path: release
+          merge-multiple: true
+
+      - name: Write release notes
+        run: |
+          {
+            echo "## What's changed"
+            echo
+            git log -1 --pretty=%B
+            echo
+            echo "## Downloads"
+            echo
+            echo "- **Linux:** install the `.deb` package."
+            echo "- **Windows:** run the `.msi` installer."
+            echo
+            printf '%s\n' 'Discord Rich Presence is enabled when `NAVIPLAYER_DISCORD_APP_ID` is set.'
+          } > desktop-release-notes.md
+
+      - name: Publish versioned release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          TAG="desktop-v${NAVIPLAYER_VERSION}"
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            gh release upload "$TAG" release/* --clobber
+            gh release edit "$TAG" --notes-file desktop-release-notes.md
+          else
+            gh release create "$TAG" release/* \
+              --title "NaviPlayer Desktop ${NAVIPLAYER_VERSION}" \
+              --notes-file desktop-release-notes.md \
+              --target "$GITHUB_SHA"
+          fi
