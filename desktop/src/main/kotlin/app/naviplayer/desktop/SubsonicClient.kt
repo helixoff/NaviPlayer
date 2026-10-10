@@ -117,7 +117,7 @@ class SubsonicClient(credentials: Credentials, private val salt: String) {
     }
 
     companion object {
-        private val JAVAFX_FORMATS = setOf("mp3", "m4a", "aac", "wav", "aif", "aiff")
+        private val JAVAFX_FORMATS = setOf("mp3")
 
         fun newSalt(): String = UUID.randomUUID().toString().replace("-", "").take(12)
 
