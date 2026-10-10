@@ -100,14 +100,25 @@ class SubsonicClient(credentials: Credentials, private val salt: String) {
         )
     }
 
-    fun streamUrl(songId: String): String =
-        endpoint("stream", mapOf("id" to songId, "format" to "raw")).toString()
+    // JavaFX Media plays only MP3, AAC/M4A, WAV and AIFF. Anything else (FLAC, Opus, OGG...)
+    // is transcoded to MP3 by Navidrome (requires ffmpeg on the server).
+    fun streamUrl(song: Song): String {
+        val directPlay = song.suffix in JAVAFX_FORMATS
+        val parameters = if (directPlay) {
+            mapOf("id" to song.id, "format" to "raw")
+        } else {
+            mapOf("id" to song.id, "format" to "mp3", "maxBitRate" to "320")
+        }
+        return endpoint("stream", parameters).toString()
+    }
 
     fun coverUrl(coverArt: String?, size: Int = 600): String? = coverArt?.let {
         endpoint("getCoverArt", mapOf("id" to it, "size" to size.toString())).toString()
     }
 
     companion object {
+        private val JAVAFX_FORMATS = setOf("mp3", "m4a", "aac", "wav", "aif", "aiff")
+
         fun newSalt(): String = UUID.randomUUID().toString().replace("-", "").take(12)
 
         private fun md5(value: String): String = MessageDigest.getInstance("MD5")

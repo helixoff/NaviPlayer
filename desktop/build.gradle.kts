@@ -36,6 +36,7 @@ compose.desktop {
         nativeDistributions {
             targetFormats(TargetFormat.Deb, TargetFormat.Msi)
             packageName = "NaviPlayer"
+            includeAllModules = true
             packageVersion = project.version.toString()
             description = "A desktop Navidrome client"
             vendor = "NaviPlayer"

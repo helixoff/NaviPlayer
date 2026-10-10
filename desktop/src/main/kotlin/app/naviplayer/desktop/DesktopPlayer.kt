@@ -75,7 +75,10 @@ class DesktopPlayer(private val discord: DiscordPresence) {
         onFxThread {
             runCatching {
                 mediaPlayer?.dispose()
-                MediaPlayer(Media(client.streamUrl(song.id))).also { player ->
+                val media = Media(client.streamUrl(song)).also { m ->
+                    m.setOnError { error = "Media: ${m.error?.message ?: "unsupported or unreachable stream"}" }
+                }
+                MediaPlayer(media).also { player ->
                     mediaPlayer = player
                     player.setOnPlaying {
                         playing = true
@@ -89,7 +92,7 @@ class DesktopPlayer(private val discord: DiscordPresence) {
                     player.setOnEndOfMedia { next(client) }
                     player.setOnError {
                         playing = false
-                        error = player.error?.message ?: "Playback failed"
+                        error = player.error?.message ?: "Playback failed (${song.suffix.ifBlank { "?" }})"
                     }
                     player.currentTimeProperty().addListener { _, _, time ->
                         positionSeconds = time.toSeconds().takeIf(Double::isFinite) ?: 0.0

@@ -595,7 +595,12 @@ private fun PlayerBar(client: SubsonicClient, player: DesktopPlayer) {
             Cover(client.coverUrl(song.coverArt, 240), Modifier.size(72.dp), 18.dp)
             Column(Modifier.width(280.dp).padding(horizontal = 14.dp)) {
                 Text(song.title, maxLines = 1, overflow = TextOverflow.Ellipsis, fontWeight = FontWeight.Bold)
-                Text(song.artist, maxLines = 1, overflow = TextOverflow.Ellipsis, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                val problem = player.error
+                if (problem != null) {
+                    Text(problem, maxLines = 2, overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.error)
+                } else {
+                    Text(song.artist, maxLines = 1, overflow = TextOverflow.Ellipsis, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
             }
             IconButton(onClick = { player.previous(client) }) { Icon(Icons.Default.SkipPrevious, "Previous") }
             FilledIconButton(onClick = player::toggle, modifier = Modifier.size(54.dp)) {

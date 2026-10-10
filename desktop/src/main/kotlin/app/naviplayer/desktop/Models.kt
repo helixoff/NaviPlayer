@@ -12,6 +12,7 @@ data class Song(
     val album: String,
     val coverArt: String?,
     val durationSeconds: Int,
+    val suffix: String = "",
 )
 
 data class Album(
@@ -41,6 +42,7 @@ internal fun JSONObject.toSong() = Song(
     album = optString("album"),
     coverArt = optString("coverArt").ifBlank { null },
     durationSeconds = optInt("duration"),
+    suffix = optString("suffix").lowercase(),
 )
 
 internal fun JSONObject.toAlbum() = Album(
