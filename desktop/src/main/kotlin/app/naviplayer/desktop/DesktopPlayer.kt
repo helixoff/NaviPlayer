@@ -80,7 +80,7 @@ class DesktopPlayer(private val discord: DiscordPresence) {
         mediaPlayer?.seek(javafx.util.Duration.seconds(seconds.coerceAtLeast(0.0)))
     }
 
-    fun setVolume(value: Double) {
+    fun changeVolume(value: Double) {
         volume = value.coerceIn(0.0, 1.0)
         onFxThread { mediaPlayer?.volume = volume }
         notifyStateChanged()

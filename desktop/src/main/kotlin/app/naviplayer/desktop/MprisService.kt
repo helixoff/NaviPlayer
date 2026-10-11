@@ -109,7 +109,7 @@ class MprisService(private val player: DesktopPlayer) : AutoCloseable {
 
         override fun <A : Any?> Set(interfaceName: String, propertyName: String, value: A) {
             if (interfaceName == PLAYER_INTERFACE && propertyName == "Volume" && value is Number) {
-                player.setVolume(value.toDouble())
+                player.changeVolume(value.toDouble())
                 return
             }
             throw PropertyReadOnly("$interfaceName.$propertyName is read-only")

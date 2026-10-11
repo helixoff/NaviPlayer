@@ -975,12 +975,12 @@ private fun PlayerBar(client: SubsonicClient, player: DesktopPlayer) {
             )
             Text(formatTime(player.durationSeconds), style = MaterialTheme.typography.labelMedium)
             Spacer(Modifier.width(14.dp))
-            IconButton(onClick = { player.setVolume(if (player.volume > 0.0) 0.0 else 1.0) }) {
+            IconButton(onClick = { player.changeVolume(if (player.volume > 0.0) 0.0 else 1.0) }) {
                 Icon(if (player.volume == 0.0) Icons.Default.VolumeOff else Icons.Default.VolumeUp, "Volume")
             }
             Slider(
                 value = player.volume.toFloat(),
-                onValueChange = { player.setVolume(it.toDouble()) },
+                onValueChange = { player.changeVolume(it.toDouble()) },
                 valueRange = 0f..1f,
                 modifier = Modifier.width(120.dp),
             )
