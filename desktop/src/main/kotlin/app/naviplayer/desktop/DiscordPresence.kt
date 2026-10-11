@@ -33,12 +33,22 @@ class DiscordPresence(
         Thread(task, "naviplayer-discord-rpc").apply { isDaemon = true }
     }
     private var connection: DiscordIpcConnection? = null
+    private var accumulatedListeningSeconds = 0L
+    private var listeningSince: Long? = null
 
     @Volatile
     private var closed = false
 
-    fun update(song: Song, playing: Boolean, positionSeconds: Double, coverUrl: String?) {
+    fun update(song: Song, playing: Boolean, coverUrl: String?) {
         if (applicationId.isBlank() || closed) return
+
+        val now = System.currentTimeMillis() / 1_000L
+        if (playing && listeningSince == null) {
+            listeningSince = now
+        } else if (!playing && listeningSince != null) {
+            accumulatedListeningSeconds += now - listeningSince!!
+            listeningSince = null
+        }
 
         val activity = JSONObject().apply {
             put("name", "NaviPlayer")
@@ -52,10 +62,8 @@ class DiscordPresence(
                 put("small_text", if (playing) "Playing" else "Paused")
             })
             if (playing) {
-                val startedAt = System.currentTimeMillis() / 1_000L - positionSeconds.toLong()
                 put("timestamps", JSONObject().apply {
-                    put("start", startedAt)
-                    if (song.durationSeconds > 0) put("end", startedAt + song.durationSeconds)
+                    put("start", now - accumulatedListeningSeconds)
                 })
             }
             put("instance", false)
@@ -65,6 +73,8 @@ class DiscordPresence(
 
     fun clear() {
         if (applicationId.isBlank() || closed) return
+        accumulatedListeningSeconds = 0L
+        listeningSince = null
         submit { publish(null) }
     }
 

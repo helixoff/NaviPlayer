@@ -45,10 +45,10 @@ class DesktopPlayer(private val discord: DiscordPresence) {
         val player = mediaPlayer ?: return@onFxThread
         if (playing) {
             player.pause()
-            current?.let { song -> discord.update(song, false, positionSeconds, coverUrl(song)) }
+            current?.let { song -> discord.update(song, false, coverUrl(song)) }
         } else {
             player.play()
-            current?.let { song -> discord.update(song, true, positionSeconds, coverUrl(song)) }
+            current?.let { song -> discord.update(song, true, coverUrl(song)) }
         }
     }
 
@@ -107,7 +107,7 @@ class DesktopPlayer(private val discord: DiscordPresence) {
         positionSeconds = 0.0
         durationSeconds = max(0, song.durationSeconds).toDouble()
         // Update immediately instead of leaving the previous track in Discord while media is opening.
-        discord.update(song, false, 0.0, coverUrl(song))
+        discord.update(song, false, coverUrl(song))
         notifyStateChanged()
         onFxThread {
             runCatching {
@@ -125,17 +125,17 @@ class DesktopPlayer(private val discord: DiscordPresence) {
                     player.volume = volume
                     player.setOnPlaying {
                         playing = true
-                        discord.update(song, true, positionSeconds, coverUrl(song))
+                        discord.update(song, true, coverUrl(song))
                         notifyStateChanged()
                     }
                     player.setOnPaused {
                         playing = false
-                        discord.update(song, false, positionSeconds, coverUrl(song))
+                        discord.update(song, false, coverUrl(song))
                         notifyStateChanged()
                     }
                     player.setOnStopped {
                         playing = false
-                        discord.update(song, false, positionSeconds, coverUrl(song))
+                        discord.update(song, false, coverUrl(song))
                         notifyStateChanged()
                     }
                     player.setOnEndOfMedia { next() }
