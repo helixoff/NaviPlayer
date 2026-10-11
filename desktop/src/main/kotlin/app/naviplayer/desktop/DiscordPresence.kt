@@ -37,16 +37,18 @@ class DiscordPresence(
     @Volatile
     private var closed = false
 
-    fun update(song: Song, playing: Boolean, positionSeconds: Double) {
+    fun update(song: Song, playing: Boolean, positionSeconds: Double, coverUrl: String?) {
         if (applicationId.isBlank() || closed) return
 
         val activity = JSONObject().apply {
+            put("name", "NaviPlayer")
+            put("type", 2)
             put("details", song.title.take(128))
-            put("state", (song.artist.ifBlank { song.album }).take(128))
+            put("state", (song.artist.ifBlank { "Unknown artist" }).take(128))
             put("assets", JSONObject().apply {
-                put("large_image", "naviplayer")
+                put("large_image", coverUrl?.takeIf { it.length <= 300 } ?: "naviplayer")
                 put("large_text", song.album.ifBlank { "NaviPlayer" }.take(128))
-                put("small_image", if (playing) "playing" else "paused")
+                put("small_image", "naviplayer")
                 put("small_text", if (playing) "Playing" else "Paused")
             })
             if (playing) {

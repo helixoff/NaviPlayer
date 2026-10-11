@@ -77,6 +77,27 @@ class SubsonicClient(credentials: Credentials, private val salt: String) {
         request("getRandomSongs", mapOf("size" to size.toString()))
             .optJSONObject("randomSongs")?.optJSONArray("song").mapObjects { it.toSong() }
 
+    suspend fun allSongs(limit: Int = 6000): List<Song> {
+        val songs = ArrayList<Song>()
+        var offset = 0
+        while (songs.size < limit) {
+            val page = request(
+                "search3",
+                mapOf(
+                    "query" to "",
+                    "songCount" to "500",
+                    "songOffset" to offset.toString(),
+                    "albumCount" to "0",
+                    "artistCount" to "0",
+                ),
+            ).optJSONObject("searchResult3")?.optJSONArray("song").mapObjects { it.toSong() }
+            songs += page
+            if (page.size < 500) break
+            offset += page.size
+        }
+        return if (songs.isEmpty()) randomSongs(500) else songs
+    }
+
     suspend fun albumSongs(albumId: String): List<Song> =
         request("getAlbum", mapOf("id" to albumId))
             .optJSONObject("album")?.optJSONArray("song").mapObjects { it.toSong() }

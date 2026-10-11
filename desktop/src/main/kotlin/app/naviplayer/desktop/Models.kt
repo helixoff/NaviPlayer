@@ -32,6 +32,23 @@ data class Playlist(
 
 data class SearchResult(val albums: List<Album>, val songs: List<Song>)
 
+private val placeholderAlbums = setOf(
+    "unknown", "unknown album", "untitled", "untitled album", "no album", "none", "n/a",
+    "soundcloud", "неизвестно", "неизвестный альбом", "без альбома",
+)
+
+fun Song.isLoose(): Boolean {
+    val normalizedAlbum = album.trim().lowercase()
+        .trim('[', ']', '(', ')', '<', '>')
+        .replace(Regex("\\s+"), " ")
+    val normalizedTitle = title.trim().lowercase()
+        .trim('[', ']', '(', ')', '<', '>')
+        .replace(Regex("\\s+"), " ")
+    val normalizedArtist = artist.trim().lowercase()
+    return normalizedArtist.isEmpty() || normalizedArtist.startsWith("[unknown") ||
+        normalizedAlbum.isEmpty() || normalizedAlbum in placeholderAlbums || normalizedAlbum == normalizedTitle
+}
+
 internal inline fun <T> JSONArray?.mapObjects(mapper: (JSONObject) -> T): List<T> =
     if (this == null) emptyList() else List(length()) { mapper(getJSONObject(it)) }
 

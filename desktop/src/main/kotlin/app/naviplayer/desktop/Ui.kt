@@ -36,6 +36,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.Logout
 import androidx.compose.material.icons.filled.Album
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.LibraryMusic
 import androidx.compose.material.icons.filled.MusicNote
@@ -46,6 +47,9 @@ import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Shuffle
 import androidx.compose.material.icons.filled.SkipNext
 import androidx.compose.material.icons.filled.SkipPrevious
+import androidx.compose.material.icons.filled.SystemUpdateAlt
+import androidx.compose.material.icons.filled.VolumeOff
+import androidx.compose.material.icons.filled.VolumeUp
 import androidx.compose.material.icons.outlined.Home
 import androidx.compose.material.icons.outlined.LibraryMusic
 import androidx.compose.material.icons.outlined.Search
@@ -92,10 +96,16 @@ import kotlin.math.roundToInt
 
 private enum class DesktopPage { Home, Search, Library, Settings }
 
+private enum class TrackCollection(val title: String, val subtitle: String) {
+    AllTracks("All tracks", "Every song in your library"),
+    LooseTracks("Loose tracks", "Songs without proper album tags"),
+}
+
 private data class ShellTarget(
     val page: DesktopPage,
     val album: Album?,
     val playlist: Playlist?,
+    val collection: TrackCollection?,
     val loading: Boolean,
 )
 
@@ -224,11 +234,23 @@ private fun PlayerShell(
     var suggested by remember { mutableStateOf<List<Song>>(emptyList()) }
     var selectedAlbum by remember { mutableStateOf<Album?>(null) }
     var selectedPlaylist by remember { mutableStateOf<Playlist?>(null) }
+    var selectedCollection by remember { mutableStateOf<TrackCollection?>(null) }
     var albumSongs by remember { mutableStateOf<List<Song>>(emptyList()) }
     var playlistSongs by remember { mutableStateOf<List<Song>>(emptyList()) }
+    var collectionSongs by remember { mutableStateOf<List<Song>>(emptyList()) }
+    var collectionLoading by remember { mutableStateOf(false) }
     var loading by remember { mutableStateOf(true) }
     var libraryLoading by remember { mutableStateOf(true) }
     var error by remember { mutableStateOf<String?>(null) }
+    val updater = remember { DesktopUpdater() }
+    val scope = rememberCoroutineScope()
+    var availableUpdate by remember { mutableStateOf<DesktopUpdate?>(null) }
+    var updateBusy by remember { mutableStateOf(false) }
+    var updateError by remember { mutableStateOf<String?>(null) }
+
+    LaunchedEffect(updater) {
+        availableUpdate = runCatching { updater.check() }.getOrNull()
+    }
 
     LaunchedEffect(client) {
         loading = true
@@ -279,6 +301,23 @@ private fun PlayerShell(
         }
     }
 
+    LaunchedEffect(selectedCollection) {
+        val collection = selectedCollection ?: return@LaunchedEffect
+        collectionLoading = true
+        collectionSongs = emptyList()
+        collectionSongs = runCatching {
+            val songs = client.allSongs()
+            when (collection) {
+                TrackCollection.AllTracks -> songs
+                TrackCollection.LooseTracks -> songs.filter(Song::isLoose)
+            }.sortedWith(compareBy(String.CASE_INSENSITIVE_ORDER) { it.title })
+        }.getOrElse {
+            error = it.message
+            emptyList()
+        }
+        collectionLoading = false
+    }
+
     val shellBackground = if (appearance.ambientGlow) {
         Brush.radialGradient(
             colors = listOf(
@@ -293,6 +332,24 @@ private fun PlayerShell(
     }
 
     Column(Modifier.fillMaxSize().background(shellBackground)) {
+        availableUpdate?.let { update ->
+            DesktopUpdateBanner(
+                update = update,
+                busy = updateBusy,
+                error = updateError,
+                onDismiss = { availableUpdate = null },
+                onUpdate = {
+                    if (!updateBusy) scope.launch {
+                        updateBusy = true
+                        updateError = null
+                        runCatching { updater.downloadAndInstall(update) }
+                            .onFailure { updateError = it.message ?: "Could not start the installer" }
+                        updateBusy = false
+                    }
+                },
+                onReleasePage = { updater.openRelease(update) },
+            )
+        }
         Row(Modifier.weight(1f).fillMaxWidth()) {
             NavigationRail(
                 modifier = Modifier.fillMaxHeight().width(96.dp),
@@ -304,20 +361,20 @@ private fun PlayerShell(
                 },
             ) {
                 NavigationRailItem(
-                    selected = page == DesktopPage.Home && selectedAlbum == null && selectedPlaylist == null,
-                    onClick = { selectedAlbum = null; selectedPlaylist = null; page = DesktopPage.Home },
+                    selected = page == DesktopPage.Home && selectedAlbum == null && selectedPlaylist == null && selectedCollection == null,
+                    onClick = { selectedAlbum = null; selectedPlaylist = null; selectedCollection = null; page = DesktopPage.Home },
                     icon = { Icon(if (page == DesktopPage.Home) Icons.Default.Home else Icons.Outlined.Home, null) },
                     label = { Text("Home") },
                 )
                 NavigationRailItem(
                     selected = page == DesktopPage.Search,
-                    onClick = { selectedAlbum = null; selectedPlaylist = null; page = DesktopPage.Search },
+                    onClick = { selectedAlbum = null; selectedPlaylist = null; selectedCollection = null; page = DesktopPage.Search },
                     icon = { Icon(if (page == DesktopPage.Search) Icons.Default.Search else Icons.Outlined.Search, null) },
                     label = { Text("Search") },
                 )
                 NavigationRailItem(
-                    selected = page == DesktopPage.Library && selectedAlbum == null && selectedPlaylist == null,
-                    onClick = { selectedAlbum = null; selectedPlaylist = null; page = DesktopPage.Library },
+                    selected = page == DesktopPage.Library && selectedAlbum == null && selectedPlaylist == null && selectedCollection == null,
+                    onClick = { selectedAlbum = null; selectedPlaylist = null; selectedCollection = null; page = DesktopPage.Library },
                     icon = {
                         Icon(
                             if (page == DesktopPage.Library) Icons.Default.LibraryMusic else Icons.Outlined.LibraryMusic,
@@ -329,7 +386,7 @@ private fun PlayerShell(
                 Spacer(Modifier.weight(1f))
                 NavigationRailItem(
                     selected = page == DesktopPage.Settings,
-                    onClick = { selectedAlbum = null; selectedPlaylist = null; page = DesktopPage.Settings },
+                    onClick = { selectedAlbum = null; selectedPlaylist = null; selectedCollection = null; page = DesktopPage.Settings },
                     icon = {
                         Icon(
                             if (page == DesktopPage.Settings) Icons.Default.Settings else Icons.Outlined.Settings,
@@ -348,7 +405,9 @@ private fun PlayerShell(
                     page,
                     selectedAlbum,
                     selectedPlaylist,
-                    loading || (page == DesktopPage.Library && libraryLoading),
+                    selectedCollection,
+                    loading || (page == DesktopPage.Library && libraryLoading) ||
+                        (selectedCollection != null && collectionLoading),
                 ),
                 transitionSpec = { fadeIn(tween(180)) togetherWith fadeOut(tween(120)) },
                 modifier = Modifier.weight(1f),
@@ -357,24 +416,33 @@ private fun PlayerShell(
                     target.loading -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { CircularProgressIndicator() }
                     target.album != null -> AlbumView(target.album, albumSongs, client, player) { selectedAlbum = null }
                     target.playlist != null -> PlaylistView(target.playlist, playlistSongs, client, player) { selectedPlaylist = null }
+                    target.collection != null -> TrackCollectionView(
+                        collection = target.collection,
+                        songs = collectionSongs,
+                        client = client,
+                        player = player,
+                        onBack = { selectedCollection = null },
+                    )
                     target.page == DesktopPage.Home -> HomeView(
                         username = credentials.username,
                         albums = albums,
                         suggested = suggested,
                         client = client,
                         player = player,
-                        onAlbum = { selectedPlaylist = null; selectedAlbum = it },
+                        onAlbum = { selectedPlaylist = null; selectedCollection = null; selectedAlbum = it },
                     )
                     target.page == DesktopPage.Search -> SearchView(client, player, onAlbum = {
                         selectedPlaylist = null
+                        selectedCollection = null
                         selectedAlbum = it
                     })
                     target.page == DesktopPage.Library -> LibraryView(
                         albums = allAlbums,
                         playlists = playlists,
                         client = client,
-                        onAlbum = { selectedPlaylist = null; selectedAlbum = it },
-                        onPlaylist = { selectedAlbum = null; selectedPlaylist = it },
+                        onAlbum = { selectedPlaylist = null; selectedCollection = null; selectedAlbum = it },
+                        onPlaylist = { selectedAlbum = null; selectedCollection = null; selectedPlaylist = it },
+                        onCollection = { selectedAlbum = null; selectedPlaylist = null; selectedCollection = it },
                     )
                     else -> AppearanceView(appearance, onAppearanceChange)
                 }
@@ -385,6 +453,45 @@ private fun PlayerShell(
             Surface(color = MaterialTheme.colorScheme.errorContainer) {
                 Text(it, Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 8.dp), color = MaterialTheme.colorScheme.onErrorContainer)
             }
+        }
+    }
+}
+
+@Composable
+private fun DesktopUpdateBanner(
+    update: DesktopUpdate,
+    busy: Boolean,
+    error: String?,
+    onDismiss: () -> Unit,
+    onUpdate: () -> Unit,
+    onReleasePage: () -> Unit,
+) {
+    Surface(
+        color = MaterialTheme.colorScheme.primaryContainer,
+        modifier = Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 10.dp),
+        shape = MaterialTheme.shapes.large,
+    ) {
+        Row(
+            Modifier.padding(horizontal = 18.dp, vertical = 12.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(14.dp),
+        ) {
+            Icon(Icons.Default.SystemUpdateAlt, null, Modifier.size(28.dp))
+            Column(Modifier.weight(1f)) {
+                Text("NaviPlayer ${update.version} is ready", fontWeight = FontWeight.Bold)
+                Text(
+                    error ?: "Download the package and open the system installer.",
+                    color = if (error == null) MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = .78f)
+                    else MaterialTheme.colorScheme.error,
+                    style = MaterialTheme.typography.bodySmall,
+                )
+            }
+            if (error != null) Button(onClick = onReleasePage) { Text("Release page") }
+            Button(onClick = onUpdate, enabled = !busy) {
+                if (busy) CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp)
+                else Text("Update")
+            }
+            IconButton(onClick = onDismiss) { Icon(Icons.Default.Close, "Dismiss") }
         }
     }
 }
@@ -616,6 +723,7 @@ private fun LibraryView(
     client: SubsonicClient,
     onAlbum: (Album) -> Unit,
     onPlaylist: (Playlist) -> Unit,
+    onCollection: (TrackCollection) -> Unit,
 ) {
     Column(Modifier.fillMaxSize().padding(top = 32.dp)) {
         Text(
@@ -624,6 +732,21 @@ private fun LibraryView(
             style = MaterialTheme.typography.displaySmall,
             fontWeight = FontWeight.Bold,
         )
+        Row(
+            Modifier.padding(horizontal = 24.dp, vertical = 18.dp),
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            CollectionCard(
+                collection = TrackCollection.AllTracks,
+                icon = { Icon(Icons.Default.Shuffle, null, Modifier.size(30.dp)) },
+                onClick = onCollection,
+            )
+            CollectionCard(
+                collection = TrackCollection.LooseTracks,
+                icon = { Icon(Icons.Default.MusicNote, null, Modifier.size(30.dp)) },
+                onClick = onCollection,
+            )
+        }
         if (playlists.isNotEmpty()) {
             SectionTitle("Playlists", Modifier.padding(start = 32.dp, top = 24.dp, bottom = 12.dp))
             LazyRow(
@@ -644,6 +767,78 @@ private fun LibraryView(
             verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
             items(albums, key = Album::id) { album -> AlbumCard(album, client, onAlbum) }
+        }
+    }
+}
+
+@Composable
+private fun CollectionCard(
+    collection: TrackCollection,
+    icon: @Composable () -> Unit,
+    onClick: (TrackCollection) -> Unit,
+) {
+    Surface(
+        modifier = Modifier
+            .width(260.dp)
+            .height(92.dp)
+            .clip(MaterialTheme.shapes.large)
+            .clickable { onClick(collection) },
+        shape = MaterialTheme.shapes.large,
+        color = MaterialTheme.colorScheme.surfaceContainerHigh,
+    ) {
+        Row(Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
+            Surface(Modifier.size(58.dp), RoundedCornerShape(18.dp), MaterialTheme.colorScheme.primaryContainer) {
+                Box(contentAlignment = Alignment.Center) { icon() }
+            }
+            Column(Modifier.padding(start = 14.dp)) {
+                Text(collection.title, fontWeight = FontWeight.Bold)
+                Text(
+                    collection.subtitle,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    style = MaterialTheme.typography.bodySmall,
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun TrackCollectionView(
+    collection: TrackCollection,
+    songs: List<Song>,
+    client: SubsonicClient,
+    player: DesktopPlayer,
+    onBack: () -> Unit,
+) {
+    Column(Modifier.fillMaxSize().padding(32.dp)) {
+        IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Filled.ArrowBack, "Back") }
+        Row(Modifier.padding(vertical = 14.dp), verticalAlignment = Alignment.CenterVertically) {
+            Surface(Modifier.size(92.dp), RoundedCornerShape(28.dp), MaterialTheme.colorScheme.primaryContainer) {
+                Box(contentAlignment = Alignment.Center) {
+                    Icon(
+                        if (collection == TrackCollection.AllTracks) Icons.Default.Shuffle else Icons.Default.MusicNote,
+                        null,
+                        Modifier.size(42.dp),
+                    )
+                }
+            }
+            Column(Modifier.padding(start = 22.dp)) {
+                Text(collection.title, style = MaterialTheme.typography.displaySmall, fontWeight = FontWeight.Bold)
+                Text(
+                    "${songs.size} songs • ${collection.subtitle}",
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+        }
+        HorizontalDivider()
+        LazyColumn(verticalArrangement = Arrangement.spacedBy(6.dp), contentPadding = PaddingValues(vertical = 14.dp)) {
+            items(songs, key = Song::id) { song ->
+                SongRow(song, client, player.current?.id == song.id, player.playing) {
+                    player.play(song, songs, client)
+                }
+            }
         }
     }
 }
@@ -779,6 +974,16 @@ private fun PlayerBar(client: SubsonicClient, player: DesktopPlayer) {
                 modifier = Modifier.weight(1f).padding(horizontal = 12.dp),
             )
             Text(formatTime(player.durationSeconds), style = MaterialTheme.typography.labelMedium)
+            Spacer(Modifier.width(14.dp))
+            IconButton(onClick = { player.setVolume(if (player.volume > 0.0) 0.0 else 1.0) }) {
+                Icon(if (player.volume == 0.0) Icons.Default.VolumeOff else Icons.Default.VolumeUp, "Volume")
+            }
+            Slider(
+                value = player.volume.toFloat(),
+                onValueChange = { player.setVolume(it.toDouble()) },
+                valueRange = 0f..1f,
+                modifier = Modifier.width(120.dp),
+            )
         }
     }
 }

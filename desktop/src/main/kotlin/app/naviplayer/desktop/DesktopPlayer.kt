@@ -19,6 +19,8 @@ class DesktopPlayer(private val discord: DiscordPresence) {
         private set
     var durationSeconds by mutableDoubleStateOf(0.0)
         private set
+    var volume by mutableDoubleStateOf(1.0)
+        private set
     var error by mutableStateOf<String?>(null)
         private set
 
@@ -43,10 +45,10 @@ class DesktopPlayer(private val discord: DiscordPresence) {
         val player = mediaPlayer ?: return@onFxThread
         if (playing) {
             player.pause()
-            current?.let { discord.update(it, false, positionSeconds) }
+            current?.let { song -> discord.update(song, false, positionSeconds, coverUrl(song)) }
         } else {
             player.play()
-            current?.let { discord.update(it, true, positionSeconds) }
+            current?.let { song -> discord.update(song, true, positionSeconds, coverUrl(song)) }
         }
     }
 
@@ -78,6 +80,12 @@ class DesktopPlayer(private val discord: DiscordPresence) {
         mediaPlayer?.seek(javafx.util.Duration.seconds(seconds.coerceAtLeast(0.0)))
     }
 
+    fun setVolume(value: Double) {
+        volume = value.coerceIn(0.0, 1.0)
+        onFxThread { mediaPlayer?.volume = volume }
+        notifyStateChanged()
+    }
+
     fun close() = onFxThread {
         mediaPlayer?.dispose()
         mediaPlayer = null
@@ -99,7 +107,7 @@ class DesktopPlayer(private val discord: DiscordPresence) {
         positionSeconds = 0.0
         durationSeconds = max(0, song.durationSeconds).toDouble()
         // Update immediately instead of leaving the previous track in Discord while media is opening.
-        discord.update(song, false, 0.0)
+        discord.update(song, false, 0.0, coverUrl(song))
         notifyStateChanged()
         onFxThread {
             runCatching {
@@ -114,19 +122,20 @@ class DesktopPlayer(private val discord: DiscordPresence) {
                 }
                 MediaPlayer(media).also { player ->
                     mediaPlayer = player
+                    player.volume = volume
                     player.setOnPlaying {
                         playing = true
-                        discord.update(song, true, positionSeconds)
+                        discord.update(song, true, positionSeconds, coverUrl(song))
                         notifyStateChanged()
                     }
                     player.setOnPaused {
                         playing = false
-                        discord.update(song, false, positionSeconds)
+                        discord.update(song, false, positionSeconds, coverUrl(song))
                         notifyStateChanged()
                     }
                     player.setOnStopped {
                         playing = false
-                        discord.update(song, false, positionSeconds)
+                        discord.update(song, false, positionSeconds, coverUrl(song))
                         notifyStateChanged()
                     }
                     player.setOnEndOfMedia { next() }
@@ -157,6 +166,8 @@ class DesktopPlayer(private val discord: DiscordPresence) {
     private fun notifyStateChanged() {
         stateListeners.forEach { listener -> runCatching(listener) }
     }
+
+    private fun coverUrl(song: Song): String? = activeClient?.coverUrl(song.coverArt, 640)
 
     private fun onFxThread(action: () -> Unit) {
         if (Platform.isFxApplicationThread()) action() else Platform.runLater(action)

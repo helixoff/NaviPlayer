@@ -33,6 +33,12 @@ dependencies {
     implementation("com.github.hypfvieh:dbus-java-transport-native-unixsocket:5.2.2")
 }
 
+tasks.processResources {
+    filesMatching("naviplayer.properties") {
+        expand("version" to project.version.toString())
+    }
+}
+
 compose.desktop {
     application {
         mainClass = "app.naviplayer.desktop.MainKt"
