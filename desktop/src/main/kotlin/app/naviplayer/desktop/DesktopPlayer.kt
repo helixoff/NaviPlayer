@@ -29,6 +29,7 @@ class DesktopPlayer(private val discord: DiscordPresence) {
     private var queueIndex = -1
     private var activeClient: SubsonicClient? = null
     private val stateListeners = CopyOnWriteArrayList<() -> Unit>()
+    @Volatile private var playbackGeneration = 0L
 
     init {
         runCatching { Platform.startup {} }
@@ -43,13 +44,7 @@ class DesktopPlayer(private val discord: DiscordPresence) {
 
     fun toggle() = onFxThread {
         val player = mediaPlayer ?: return@onFxThread
-        if (playing) {
-            player.pause()
-            current?.let { song -> discord.update(song, false, coverUrl(song)) }
-        } else {
-            player.play()
-            current?.let { song -> discord.update(song, true, coverUrl(song)) }
-        }
+        if (playing) player.pause() else player.play()
     }
 
     fun play() = onFxThread {
@@ -87,6 +82,7 @@ class DesktopPlayer(private val discord: DiscordPresence) {
     }
 
     fun close() = onFxThread {
+        playbackGeneration++
         mediaPlayer?.dispose()
         mediaPlayer = null
         playing = false
@@ -101,6 +97,8 @@ class DesktopPlayer(private val discord: DiscordPresence) {
 
     private fun open(song: Song) {
         val client = activeClient ?: return
+        val generation = playbackGeneration + 1
+        playbackGeneration = generation
         current = song
         playing = false
         error = null
@@ -114,6 +112,7 @@ class DesktopPlayer(private val discord: DiscordPresence) {
                 mediaPlayer?.dispose()
                 val media = Media(client.streamUrl(song)).also { m ->
                     m.setOnError {
+                        if (generation != playbackGeneration) return@setOnError
                         playing = false
                         error = "Media: ${m.error?.message ?: "unsupported or unreachable stream"}"
                         discord.clear()
@@ -124,22 +123,28 @@ class DesktopPlayer(private val discord: DiscordPresence) {
                     mediaPlayer = player
                     player.volume = volume
                     player.setOnPlaying {
+                        if (generation != playbackGeneration) return@setOnPlaying
                         playing = true
                         discord.update(song, true, coverUrl(song))
                         notifyStateChanged()
                     }
                     player.setOnPaused {
+                        if (generation != playbackGeneration) return@setOnPaused
                         playing = false
                         discord.update(song, false, coverUrl(song))
                         notifyStateChanged()
                     }
                     player.setOnStopped {
+                        if (generation != playbackGeneration) return@setOnStopped
                         playing = false
                         discord.update(song, false, coverUrl(song))
                         notifyStateChanged()
                     }
-                    player.setOnEndOfMedia { next() }
+                    player.setOnEndOfMedia {
+                        if (generation == playbackGeneration) next()
+                    }
                     player.setOnError {
+                        if (generation != playbackGeneration) return@setOnError
                         playing = false
                         error = player.error?.message ?: "Playback failed (${song.suffix.ifBlank { "?" }})"
                         discord.clear()

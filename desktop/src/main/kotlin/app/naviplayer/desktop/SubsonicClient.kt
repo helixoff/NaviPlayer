@@ -10,6 +10,7 @@ import org.json.JSONObject
 import java.security.MessageDigest
 import java.util.UUID
 import java.util.concurrent.TimeUnit
+import kotlinx.coroutines.CancellationException
 
 class SubsonicClient(credentials: Credentials, private val salt: String) {
     private val baseUrl = credentials.server.trim().trimEnd('/')
@@ -119,6 +120,29 @@ class SubsonicClient(credentials: Credentials, private val salt: String) {
             albums = result?.optJSONArray("album").mapObjects { it.toAlbum() },
             songs = result?.optJSONArray("song").mapObjects { it.toSong() },
         )
+    }
+
+    suspend fun lyrics(songId: String): Lyrics? = try {
+        val available = request("getLyricsBySongId", mapOf("id" to songId))
+            .optJSONObject("lyricsList")
+            ?.optJSONArray("structuredLyrics")
+        var selected: JSONObject? = null
+        if (available != null) {
+            for (index in 0 until available.length()) {
+                val candidate = available.getJSONObject(index)
+                if (selected == null || candidate.optBoolean("synced") && !selected.optBoolean("synced")) {
+                    selected = candidate
+                }
+            }
+        }
+        val lines = selected?.optJSONArray("line").mapObjects {
+            LyricLine(it.optLong("start", 0L), it.optString("value"))
+        }
+        if (selected == null || lines.isEmpty()) null else Lyrics(lines, selected.optBoolean("synced"))
+    } catch (cancelled: CancellationException) {
+        throw cancelled
+    } catch (_: Exception) {
+        null
     }
 
     // JavaFX Media plays only MP3, AAC/M4A, WAV and AIFF. Anything else (FLAC, Opus, OGG...)

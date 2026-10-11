@@ -52,12 +52,15 @@ compose.desktop {
             linux {
                 menuGroup = "Audio"
                 appCategory = "Audio"
+                shortcut = true
+                iconFile.set(project.file("src/main/resources/naviplayer.png"))
             }
             windows {
                 menuGroup = "NaviPlayer"
                 shortcut = true
                 menu = true
                 perUserInstall = true
+                iconFile.set(project.file("src/main/resources/naviplayer.ico"))
             }
         }
     }

@@ -56,9 +56,9 @@ class DiscordPresence(
             put("details", song.title.take(128))
             put("state", (song.artist.ifBlank { "Unknown artist" }).take(128))
             put("assets", JSONObject().apply {
-                put("large_image", coverUrl?.takeIf { it.length <= 300 } ?: "naviplayer")
+                put("large_image", coverUrl?.takeIf { it.startsWith("https://") && it.length <= 300 } ?: APP_ICON_URL)
                 put("large_text", song.album.ifBlank { "NaviPlayer" }.take(128))
-                put("small_image", "naviplayer")
+                put("small_image", APP_ICON_URL)
                 put("small_text", if (playing) "Playing" else "Paused")
             })
             if (playing) {
@@ -91,6 +91,11 @@ class DiscordPresence(
 
     private fun submit(action: () -> Unit) {
         runCatching { worker.execute { if (!closed) action() } }
+    }
+
+    private companion object {
+        const val APP_ICON_URL =
+            "https://raw.githubusercontent.com/helixoff/NaviPlayer/main/discord-assets/naviplayer.png"
     }
 
     private fun publish(activity: JSONObject?) {

@@ -3,6 +3,7 @@
 package app.naviplayer.desktop
 
 import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -21,11 +22,14 @@ import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
@@ -35,6 +39,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.Logout
+import androidx.compose.material.icons.automirrored.filled.Subject
 import androidx.compose.material.icons.filled.Album
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Home
@@ -247,6 +252,7 @@ private fun PlayerShell(
     var availableUpdate by remember { mutableStateOf<DesktopUpdate?>(null) }
     var updateBusy by remember { mutableStateOf(false) }
     var updateError by remember { mutableStateOf<String?>(null) }
+    var showLyrics by remember { mutableStateOf(false) }
 
     LaunchedEffect(updater) {
         availableUpdate = runCatching { updater.check() }.getOrNull()
@@ -448,7 +454,24 @@ private fun PlayerShell(
                 }
             }
         }
-        player.current?.let { PlayerBar(client, player) }
+        player.current?.let { song ->
+            Column {
+                if (showLyrics) {
+                    DesktopLyricsPane(
+                        client = client,
+                        song = song,
+                        player = player,
+                        modifier = Modifier.fillMaxWidth().heightIn(min = 180.dp, max = 320.dp),
+                    )
+                }
+                PlayerBar(
+                    client = client,
+                    player = player,
+                    showLyrics = showLyrics,
+                    onToggleLyrics = { showLyrics = !showLyrics },
+                )
+            }
+        }
         error?.let {
             Surface(color = MaterialTheme.colorScheme.errorContainer) {
                 Text(it, Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 8.dp), color = MaterialTheme.colorScheme.onErrorContainer)
@@ -812,19 +835,20 @@ private fun TrackCollectionView(
     player: DesktopPlayer,
     onBack: () -> Unit,
 ) {
-    Column(Modifier.fillMaxSize().padding(32.dp)) {
-        IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Filled.ArrowBack, "Back") }
-        Row(Modifier.padding(vertical = 14.dp), verticalAlignment = Alignment.CenterVertically) {
-            Surface(Modifier.size(92.dp), RoundedCornerShape(28.dp), MaterialTheme.colorScheme.primaryContainer) {
-                Box(contentAlignment = Alignment.Center) {
-                    Icon(
-                        if (collection == TrackCollection.AllTracks) Icons.Default.Shuffle else Icons.Default.MusicNote,
-                        null,
-                        Modifier.size(42.dp),
-                    )
-                }
+    Column(Modifier.fillMaxSize().padding(horizontal = 24.dp, vertical = 18.dp)) {
+        Row(Modifier.fillMaxWidth().padding(bottom = 12.dp), verticalAlignment = Alignment.CenterVertically) {
+            IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Filled.ArrowBack, "Back") }
+            FilledIconButton(
+                enabled = songs.isNotEmpty(),
+                onClick = {
+                    val shuffled = songs.shuffled()
+                    shuffled.firstOrNull()?.let { player.play(it, shuffled, client) }
+                },
+                modifier = Modifier.padding(start = 8.dp).size(72.dp),
+            ) {
+                Icon(Icons.Default.Shuffle, "Shuffle ${collection.title}", Modifier.size(34.dp))
             }
-            Column(Modifier.padding(start = 22.dp)) {
+            Column(Modifier.padding(start = 18.dp)) {
                 Text(collection.title, style = MaterialTheme.typography.displaySmall, fontWeight = FontWeight.Bold)
                 Text(
                     "${songs.size} songs • ${collection.subtitle}",
@@ -833,7 +857,11 @@ private fun TrackCollectionView(
             }
         }
         HorizontalDivider()
-        LazyColumn(verticalArrangement = Arrangement.spacedBy(6.dp), contentPadding = PaddingValues(vertical = 14.dp)) {
+        LazyColumn(
+            modifier = Modifier.weight(1f).fillMaxWidth(),
+            verticalArrangement = Arrangement.spacedBy(2.dp),
+            contentPadding = PaddingValues(vertical = 6.dp),
+        ) {
             items(songs, key = Song::id) { song ->
                 SongRow(song, client, player.current?.id == song.id, player.playing) {
                     player.play(song, songs, client)
@@ -926,9 +954,9 @@ private fun SongRow(song: Song, client: SubsonicClient, selected: Boolean, playi
         color = if (selected) MaterialTheme.colorScheme.secondaryContainer else Color.Transparent,
         shape = MaterialTheme.shapes.medium,
     ) {
-        Row(Modifier.padding(10.dp), verticalAlignment = Alignment.CenterVertically) {
-            Cover(client.coverUrl(song.coverArt, 160), Modifier.size(54.dp), 15.dp)
-            Column(Modifier.weight(1f).padding(horizontal = 14.dp)) {
+        Row(Modifier.padding(horizontal = 8.dp, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
+            Cover(client.coverUrl(song.coverArt, 160), Modifier.size(48.dp), 14.dp)
+            Column(Modifier.weight(1f).padding(horizontal = 12.dp)) {
                 Text(song.title, maxLines = 1, overflow = TextOverflow.Ellipsis, fontWeight = FontWeight.SemiBold)
                 Text(
                     listOf(song.artist, song.album).filter(String::isNotBlank).joinToString(" • "),
@@ -946,7 +974,12 @@ private fun SongRow(song: Song, client: SubsonicClient, selected: Boolean, playi
 }
 
 @Composable
-private fun PlayerBar(client: SubsonicClient, player: DesktopPlayer) {
+private fun PlayerBar(
+    client: SubsonicClient,
+    player: DesktopPlayer,
+    showLyrics: Boolean,
+    onToggleLyrics: () -> Unit,
+) {
     val song = player.current ?: return
     Surface(color = MaterialTheme.colorScheme.surfaceContainerHigh, tonalElevation = 12.dp, shadowElevation = 16.dp) {
         Row(Modifier.fillMaxWidth().height(112.dp).padding(horizontal = 22.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -974,6 +1007,14 @@ private fun PlayerBar(client: SubsonicClient, player: DesktopPlayer) {
                 modifier = Modifier.weight(1f).padding(horizontal = 12.dp),
             )
             Text(formatTime(player.durationSeconds), style = MaterialTheme.typography.labelMedium)
+            Spacer(Modifier.width(8.dp))
+            IconButton(onClick = onToggleLyrics) {
+                Icon(
+                    Icons.AutoMirrored.Filled.Subject,
+                    "Lyrics",
+                    tint = if (showLyrics) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
             Spacer(Modifier.width(14.dp))
             IconButton(onClick = { player.changeVolume(if (player.volume > 0.0) 0.0 else 1.0) }) {
                 Icon(if (player.volume == 0.0) Icons.Default.VolumeOff else Icons.Default.VolumeUp, "Volume")
@@ -984,6 +1025,85 @@ private fun PlayerBar(client: SubsonicClient, player: DesktopPlayer) {
                 valueRange = 0f..1f,
                 modifier = Modifier.width(120.dp),
             )
+        }
+    }
+}
+
+@Composable
+private fun DesktopLyricsPane(
+    client: SubsonicClient,
+    song: Song,
+    player: DesktopPlayer,
+    modifier: Modifier = Modifier,
+) {
+    var lyrics by remember(song.id) { mutableStateOf<Lyrics?>(null) }
+    var loaded by remember(song.id) { mutableStateOf(false) }
+    val listState = rememberLazyListState()
+
+    LaunchedEffect(song.id) {
+        loaded = false
+        lyrics = client.lyrics(song.id)
+        loaded = true
+    }
+
+    val available = lyrics
+    val positionMs = (player.positionSeconds * 1_000.0).toLong() + 250L
+    val activeLine = if (available?.synced == true) {
+        available.lines.indexOfLast { it.startMs <= positionMs }
+    } else {
+        -1
+    }
+    LaunchedEffect(song.id, activeLine) {
+        if (activeLine >= 0) listState.animateScrollToItem(activeLine, -80)
+    }
+
+    Surface(modifier = modifier, color = MaterialTheme.colorScheme.surfaceContainer, tonalElevation = 8.dp) {
+        Column(Modifier.fillMaxSize().padding(horizontal = 24.dp, vertical = 14.dp)) {
+            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                Icon(Icons.AutoMirrored.Filled.Subject, null, tint = MaterialTheme.colorScheme.primary)
+                Text(
+                    "Lyrics",
+                    Modifier.padding(start = 10.dp),
+                    style = MaterialTheme.typography.titleLarge,
+                    fontWeight = FontWeight.Bold,
+                )
+                Spacer(Modifier.weight(1f))
+                if (available?.synced == true) {
+                    Text("synced", color = MaterialTheme.colorScheme.primary, style = MaterialTheme.typography.labelMedium)
+                }
+            }
+            when {
+                !loaded -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { CircularProgressIndicator() }
+                available == null -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                    Text("No lyrics for this track", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+                else -> LazyColumn(
+                    modifier = Modifier.fillMaxSize().padding(top = 8.dp),
+                    state = listState,
+                    contentPadding = PaddingValues(vertical = 12.dp),
+                    verticalArrangement = Arrangement.spacedBy(4.dp),
+                ) {
+                    itemsIndexed(available.lines) { index, line ->
+                        val color by animateColorAsState(
+                            if (!available.synced || index == activeLine) MaterialTheme.colorScheme.onSurface
+                            else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = .48f),
+                            label = "lyricColor",
+                        )
+                        Text(
+                            line.text.ifBlank { "♪" },
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clip(MaterialTheme.shapes.small)
+                                .clickable(enabled = available.synced) { player.seek(line.startMs / 1_000.0) }
+                                .padding(horizontal = 10.dp, vertical = 5.dp),
+                            color = color,
+                            style = if (index == activeLine) MaterialTheme.typography.titleLarge
+                            else MaterialTheme.typography.bodyLarge,
+                            fontWeight = if (index == activeLine) FontWeight.Bold else FontWeight.Normal,
+                        )
+                    }
+                }
+            }
         }
     }
 }

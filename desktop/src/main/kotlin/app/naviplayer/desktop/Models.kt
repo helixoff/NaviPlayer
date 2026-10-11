@@ -32,6 +32,10 @@ data class Playlist(
 
 data class SearchResult(val albums: List<Album>, val songs: List<Song>)
 
+data class LyricLine(val startMs: Long, val text: String)
+
+data class Lyrics(val lines: List<LyricLine>, val synced: Boolean)
+
 private val placeholderAlbums = setOf(
     "unknown", "unknown album", "untitled", "untitled album", "no album", "none", "n/a",
     "soundcloud", "неизвестно", "неизвестный альбом", "без альбома",
