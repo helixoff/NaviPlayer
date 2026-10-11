@@ -95,6 +95,7 @@ fun AppScaffold(api: SubsonicApi, store: SessionStore, holder: PlayerHolder, cre
     NaviBackdrop(Modifier.fillMaxSize()) {
         Scaffold(
             containerColor = Color.Transparent,
+            topBar = { AndroidUpdateBanner() },
             bottomBar = {
                 Column {
                     if (holder.current != null) MiniPlayer(holder) { showPlayer = true }
