@@ -96,10 +96,13 @@ import coil3.compose.AsyncImage
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.async
 import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlin.math.roundToInt
 
 private enum class DesktopPage { Home, Search, Library, Settings }
+
+private const val UPDATE_CHECK_INTERVAL_MS = 15 * 60 * 1_000L
 
 private enum class TrackCollection(val title: String, val subtitle: String) {
     AllTracks("All tracks", "Every song in your library"),
@@ -250,12 +253,26 @@ private fun PlayerShell(
     val updater = remember { DesktopUpdater() }
     val scope = rememberCoroutineScope()
     var availableUpdate by remember { mutableStateOf<DesktopUpdate?>(null) }
+    var updateChecking by remember { mutableStateOf(false) }
     var updateBusy by remember { mutableStateOf(false) }
     var updateError by remember { mutableStateOf<String?>(null) }
     var showLyrics by remember { mutableStateOf(false) }
 
+    suspend fun refreshUpdates() {
+        if (updateChecking) return
+        updateChecking = true
+        updateError = null
+        runCatching { updater.check() }
+            .onSuccess { availableUpdate = it }
+            .onFailure { updateError = it.message ?: "Could not check for updates" }
+        updateChecking = false
+    }
+
     LaunchedEffect(updater) {
-        availableUpdate = runCatching { updater.check() }.getOrNull()
+        while (true) {
+            refreshUpdates()
+            delay(UPDATE_CHECK_INTERVAL_MS)
+        }
     }
 
     LaunchedEffect(client) {
@@ -450,7 +467,26 @@ private fun PlayerShell(
                         onPlaylist = { selectedAlbum = null; selectedCollection = null; selectedPlaylist = it },
                         onCollection = { selectedAlbum = null; selectedPlaylist = null; selectedCollection = it },
                     )
-                    else -> AppearanceView(appearance, onAppearanceChange)
+                    else -> AppearanceView(
+                        settings = appearance,
+                        onChange = onAppearanceChange,
+                        currentVersion = updater.currentVersion,
+                        availableUpdate = availableUpdate,
+                        checkingUpdate = updateChecking,
+                        installingUpdate = updateBusy,
+                        updateError = updateError,
+                        onCheckUpdate = { scope.launch { refreshUpdates() } },
+                        onInstallUpdate = {
+                            val update = availableUpdate
+                            if (update != null && !updateBusy) scope.launch {
+                                updateBusy = true
+                                updateError = null
+                                runCatching { updater.downloadAndInstall(update) }
+                                    .onFailure { updateError = it.message ?: "Could not start the installer" }
+                                updateBusy = false
+                            }
+                        },
+                    )
                 }
             }
         }
@@ -523,6 +559,13 @@ private fun DesktopUpdateBanner(
 private fun AppearanceView(
     settings: AppearanceSettings,
     onChange: (AppearanceSettings) -> Unit,
+    currentVersion: String,
+    availableUpdate: DesktopUpdate?,
+    checkingUpdate: Boolean,
+    installingUpdate: Boolean,
+    updateError: String?,
+    onCheckUpdate: () -> Unit,
+    onInstallUpdate: () -> Unit,
 ) {
     LazyColumn(
         modifier = Modifier.fillMaxSize(),
@@ -535,6 +578,49 @@ private fun AppearanceView(
                 "Make NaviPlayer feel at home on your desktop.",
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
+        }
+        item {
+            Text("Updates", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.SemiBold)
+            Surface(
+                modifier = Modifier.fillMaxWidth().padding(top = 14.dp),
+                shape = MaterialTheme.shapes.large,
+                color = MaterialTheme.colorScheme.surfaceContainerHigh,
+            ) {
+                Row(
+                    Modifier.padding(horizontal = 22.dp, vertical = 18.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(14.dp),
+                ) {
+                    Icon(Icons.Default.SystemUpdateAlt, null, Modifier.size(30.dp), tint = MaterialTheme.colorScheme.primary)
+                    Column(Modifier.weight(1f)) {
+                        Text(
+                            availableUpdate?.let { "NaviPlayer ${it.version} is available" }
+                                ?: "NaviPlayer $currentVersion is up to date",
+                            fontWeight = FontWeight.SemiBold,
+                        )
+                        Text(
+                            updateError ?: if (availableUpdate == null) {
+                                "Checks automatically while the app is open."
+                            } else {
+                                "Download it here without opening the releases page."
+                            },
+                            color = if (updateError == null) MaterialTheme.colorScheme.onSurfaceVariant
+                            else MaterialTheme.colorScheme.error,
+                            style = MaterialTheme.typography.bodySmall,
+                        )
+                    }
+                    Button(onClick = onCheckUpdate, enabled = !checkingUpdate && !installingUpdate) {
+                        if (checkingUpdate) CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp)
+                        else Text("Check now")
+                    }
+                    if (availableUpdate != null) {
+                        Button(onClick = onInstallUpdate, enabled = !installingUpdate && !checkingUpdate) {
+                            if (installingUpdate) CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp)
+                            else Text("Update")
+                        }
+                    }
+                }
+            }
         }
         item {
             Text("Surface", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.SemiBold)
