@@ -35,11 +35,14 @@ class DiscordPresence(
     private var connection: DiscordIpcConnection? = null
     private var accumulatedListeningSeconds = 0L
     private var listeningSince: Long? = null
+    private val updateLock = Any()
+    private var pendingUpdate: PresenceUpdate? = null
+    private var updateWorkerRunning = false
 
     @Volatile
     private var closed = false
 
-    fun update(song: Song, playing: Boolean, coverUrl: String?) {
+    fun update(song: Song, playing: Boolean) {
         if (applicationId.isBlank() || closed) return
 
         val now = System.currentTimeMillis() / 1_000L
@@ -56,10 +59,8 @@ class DiscordPresence(
             put("details", song.title.take(128))
             put("state", (song.artist.ifBlank { "Unknown artist" }).take(128))
             put("assets", JSONObject().apply {
-                put("large_image", coverUrl?.takeIf { it.startsWith("https://") && it.length <= 300 } ?: APP_ICON_URL)
-                put("large_text", song.album.ifBlank { "NaviPlayer" }.take(128))
-                put("small_image", APP_ICON_URL)
-                put("small_text", if (playing) "Playing" else "Paused")
+                put("large_image", APP_ICON_URL)
+                put("large_text", "NaviPlayer")
             })
             if (playing) {
                 put("timestamps", JSONObject().apply {
@@ -68,14 +69,14 @@ class DiscordPresence(
             }
             put("instance", false)
         }
-        submit { publish(activity) }
+        submitLatest(activity)
     }
 
     fun clear() {
         if (applicationId.isBlank() || closed) return
         accumulatedListeningSeconds = 0L
         listeningSince = null
-        submit { publish(null) }
+        submitLatest(null)
     }
 
     override fun close() {
@@ -89,14 +90,35 @@ class DiscordPresence(
         worker.shutdown()
     }
 
-    private fun submit(action: () -> Unit) {
-        runCatching { worker.execute { if (!closed) action() } }
+    private fun submitLatest(activity: JSONObject?) {
+        var startWorker = false
+        synchronized(updateLock) {
+            pendingUpdate = PresenceUpdate(activity)
+            if (!updateWorkerRunning) {
+                updateWorkerRunning = true
+                startWorker = true
+            }
+        }
+        if (startWorker) runCatching { worker.execute(::drainUpdates) }
+    }
+
+    private fun drainUpdates() {
+        while (!closed) {
+            val update = synchronized(updateLock) {
+                pendingUpdate.also { pendingUpdate = null }.also {
+                    if (it == null) updateWorkerRunning = false
+                }
+            } ?: return
+            publish(update.activity)
+        }
     }
 
     private companion object {
         const val APP_ICON_URL =
             "https://raw.githubusercontent.com/helixoff/NaviPlayer/main/discord-assets/naviplayer.png"
     }
+
+    private data class PresenceUpdate(val activity: JSONObject?)
 
     private fun publish(activity: JSONObject?) {
         repeat(2) {

@@ -981,6 +981,10 @@ private fun PlayerBar(
     onToggleLyrics: () -> Unit,
 ) {
     val song = player.current ?: return
+    var seekPreview by remember(song.id) { mutableStateOf<Float?>(null) }
+    var volumePreview by remember { mutableStateOf<Float?>(null) }
+    val shownPosition = seekPreview?.toDouble() ?: player.positionSeconds
+    val shownVolume = volumePreview?.toDouble() ?: player.volume
     Surface(color = MaterialTheme.colorScheme.surfaceContainerHigh, tonalElevation = 12.dp, shadowElevation = 16.dp) {
         Row(Modifier.fillMaxWidth().height(112.dp).padding(horizontal = 22.dp), verticalAlignment = Alignment.CenterVertically) {
             Cover(client.coverUrl(song.coverArt, 240), Modifier.size(72.dp), 18.dp)
@@ -999,10 +1003,14 @@ private fun PlayerBar(
             }
             IconButton(onClick = player::next) { Icon(Icons.Default.SkipNext, "Next") }
             Spacer(Modifier.width(20.dp))
-            Text(formatTime(player.positionSeconds), style = MaterialTheme.typography.labelMedium)
+            Text(formatTime(shownPosition), style = MaterialTheme.typography.labelMedium)
             Slider(
-                value = player.positionSeconds.coerceIn(0.0, player.durationSeconds.coerceAtLeast(1.0)).toFloat(),
-                onValueChange = { player.seek(it.toDouble()) },
+                value = shownPosition.coerceIn(0.0, player.durationSeconds.coerceAtLeast(1.0)).toFloat(),
+                onValueChange = { seekPreview = it },
+                onValueChangeFinished = {
+                    seekPreview?.let { player.seek(it.toDouble()) }
+                    seekPreview = null
+                },
                 valueRange = 0f..player.durationSeconds.coerceAtLeast(1.0).toFloat(),
                 modifier = Modifier.weight(1f).padding(horizontal = 12.dp),
             )
@@ -1016,12 +1024,22 @@ private fun PlayerBar(
                 )
             }
             Spacer(Modifier.width(14.dp))
-            IconButton(onClick = { player.changeVolume(if (player.volume > 0.0) 0.0 else 1.0) }) {
-                Icon(if (player.volume == 0.0) Icons.Default.VolumeOff else Icons.Default.VolumeUp, "Volume")
+            IconButton(onClick = {
+                volumePreview = null
+                player.changeVolume(if (shownVolume > 0.0) 0.0 else 1.0)
+            }) {
+                Icon(if (shownVolume == 0.0) Icons.Default.VolumeOff else Icons.Default.VolumeUp, "Volume")
             }
             Slider(
-                value = player.volume.toFloat(),
-                onValueChange = { player.changeVolume(it.toDouble()) },
+                value = shownVolume.toFloat(),
+                onValueChange = {
+                    volumePreview = it
+                    player.previewVolume(it.toDouble())
+                },
+                onValueChangeFinished = {
+                    volumePreview?.let { player.changeVolume(it.toDouble()) }
+                    volumePreview = null
+                },
                 valueRange = 0f..1f,
                 modifier = Modifier.width(120.dp),
             )

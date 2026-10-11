@@ -23,12 +23,17 @@ class MprisService(private val player: DesktopPlayer) : AutoCloseable {
     init {
         if (System.getProperty("os.name").contains("linux", ignoreCase = true)) {
             runCatching {
-                DBusConnectionBuilder.forSessionBus().build().also { bus ->
+                val bus = DBusConnectionBuilder.forSessionBus().build()
+                try {
                     val exported = MprisObject(player)
-                    bus.requestBusName(BUS_NAME)
                     bus.exportObject(OBJECT_PATH, exported)
+                    bus.requestBusName(BUS_NAME)
                     connection = bus
                     listener = player.addStateListener { publishPlayerState() }
+                    publishPlayerState()
+                } catch (failure: Exception) {
+                    runCatching { bus.close() }
+                    throw failure
                 }
             }.onFailure { error ->
                 System.err.println("NaviPlayer MPRIS unavailable: ${error.message}")
@@ -83,7 +88,7 @@ class MprisService(private val player: DesktopPlayer) : AutoCloseable {
     }
 
     @Suppress("FunctionName")
-    private class MprisObject(private val player: DesktopPlayer) : MprisRoot, MprisPlayer, Properties {
+    class MprisObject(private val player: DesktopPlayer) : MprisRoot, MprisPlayer, Properties {
         override fun getObjectPath() = OBJECT_PATH
 
         override fun Raise() = Unit
@@ -156,7 +161,7 @@ class MprisService(private val player: DesktopPlayer) : AutoCloseable {
 }
 
 @DBusInterfaceName("org.mpris.MediaPlayer2")
-private interface MprisRoot : DBusInterface {
+interface MprisRoot : DBusInterface {
     @Suppress("FunctionName")
     fun Raise()
 
@@ -165,7 +170,7 @@ private interface MprisRoot : DBusInterface {
 }
 
 @DBusInterfaceName("org.mpris.MediaPlayer2.Player")
-private interface MprisPlayer : DBusInterface {
+interface MprisPlayer : DBusInterface {
     @Suppress("FunctionName") fun Next()
     @Suppress("FunctionName") fun Previous()
     @Suppress("FunctionName") fun Pause()

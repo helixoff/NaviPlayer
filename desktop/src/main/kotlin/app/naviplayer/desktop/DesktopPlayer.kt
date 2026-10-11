@@ -30,6 +30,7 @@ class DesktopPlayer(private val discord: DiscordPresence) {
     private var activeClient: SubsonicClient? = null
     private val stateListeners = CopyOnWriteArrayList<() -> Unit>()
     @Volatile private var playbackGeneration = 0L
+    private var lastPositionUpdateNanos = 0L
 
     init {
         runCatching { Platform.startup {} }
@@ -77,8 +78,12 @@ class DesktopPlayer(private val discord: DiscordPresence) {
 
     fun changeVolume(value: Double) {
         volume = value.coerceIn(0.0, 1.0)
-        onFxThread { mediaPlayer?.volume = volume }
+        previewVolume(volume)
         notifyStateChanged()
+    }
+
+    fun previewVolume(value: Double) = onFxThread {
+        mediaPlayer?.volume = value.coerceIn(0.0, 1.0)
     }
 
     fun close() = onFxThread {
@@ -103,9 +108,10 @@ class DesktopPlayer(private val discord: DiscordPresence) {
         playing = false
         error = null
         positionSeconds = 0.0
+        lastPositionUpdateNanos = 0L
         durationSeconds = max(0, song.durationSeconds).toDouble()
         // Update immediately instead of leaving the previous track in Discord while media is opening.
-        discord.update(song, false, coverUrl(song))
+        discord.update(song, false)
         notifyStateChanged()
         onFxThread {
             runCatching {
@@ -125,19 +131,19 @@ class DesktopPlayer(private val discord: DiscordPresence) {
                     player.setOnPlaying {
                         if (generation != playbackGeneration) return@setOnPlaying
                         playing = true
-                        discord.update(song, true, coverUrl(song))
+                        discord.update(song, true)
                         notifyStateChanged()
                     }
                     player.setOnPaused {
                         if (generation != playbackGeneration) return@setOnPaused
                         playing = false
-                        discord.update(song, false, coverUrl(song))
+                        discord.update(song, false)
                         notifyStateChanged()
                     }
                     player.setOnStopped {
                         if (generation != playbackGeneration) return@setOnStopped
                         playing = false
-                        discord.update(song, false, coverUrl(song))
+                        discord.update(song, false)
                         notifyStateChanged()
                     }
                     player.setOnEndOfMedia {
@@ -151,7 +157,11 @@ class DesktopPlayer(private val discord: DiscordPresence) {
                         notifyStateChanged()
                     }
                     player.currentTimeProperty().addListener { _, _, time ->
-                        positionSeconds = time.toSeconds().takeIf(Double::isFinite) ?: 0.0
+                        val now = System.nanoTime()
+                        if (now - lastPositionUpdateNanos >= POSITION_UPDATE_INTERVAL_NANOS) {
+                            positionSeconds = time.toSeconds().takeIf(Double::isFinite) ?: 0.0
+                            lastPositionUpdateNanos = now
+                        }
                     }
                     player.totalDurationProperty().addListener { _, _, time ->
                         durationSeconds = time.toSeconds().takeIf(Double::isFinite)
@@ -172,9 +182,11 @@ class DesktopPlayer(private val discord: DiscordPresence) {
         stateListeners.forEach { listener -> runCatching(listener) }
     }
 
-    private fun coverUrl(song: Song): String? = activeClient?.coverUrl(song.coverArt, 640)
-
     private fun onFxThread(action: () -> Unit) {
         if (Platform.isFxApplicationThread()) action() else Platform.runLater(action)
+    }
+
+    private companion object {
+        const val POSITION_UPDATE_INTERVAL_NANOS = 100_000_000L
     }
 }
