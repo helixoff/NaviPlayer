@@ -67,21 +67,26 @@ class AndroidUpdater(private val context: Context) {
         http.newCall(request).execute().use { response ->
             if (!response.isSuccessful) return@withContext null
             val releases = JSONArray(response.body?.string().orEmpty())
+            var latest: AndroidUpdate? = null
             for (index in 0 until releases.length()) {
                 val release = releases.getJSONObject(index)
                 val tag = release.optString("tag_name")
                 if (release.optBoolean("draft") || !tag.startsWith("v") || tag.startsWith("vdesktop")) continue
                 val version = tag.removePrefix("v")
-                if (compareVersions(version, currentVersion) <= 0) return@withContext null
+                if (compareVersions(version, currentVersion) <= 0) continue
                 val assets = release.optJSONArray("assets") ?: continue
                 for (assetIndex in 0 until assets.length()) {
                     val asset = assets.getJSONObject(assetIndex)
                     if (asset.optString("name").endsWith(".apk", ignoreCase = true)) {
-                        return@withContext AndroidUpdate(version, asset.getString("browser_download_url"))
+                        val candidate = AndroidUpdate(version, asset.getString("browser_download_url"))
+                        if (latest == null || compareVersions(candidate.version, latest.version) > 0) {
+                            latest = candidate
+                        }
+                        break
                     }
                 }
             }
-            null
+            latest
         }
     }
 

@@ -39,27 +39,32 @@ class DesktopUpdater {
             if (!response.isSuccessful) return@withContext null
             val releases = JSONArray(response.body?.string().orEmpty())
             val extension = if (isWindows()) ".msi" else ".deb"
+            var latest: DesktopUpdate? = null
             for (index in 0 until releases.length()) {
                 val release = releases.getJSONObject(index)
                 if (release.optBoolean("draft")) continue
                 val tag = release.optString("tag_name")
                 if (!tag.startsWith("desktop-v")) continue
                 val version = tag.removePrefix("desktop-v")
-                if (compareVersions(version, currentVersion) <= 0) return@withContext null
+                if (compareVersions(version, currentVersion) <= 0) continue
                 val assets = release.optJSONArray("assets") ?: continue
                 for (assetIndex in 0 until assets.length()) {
                     val asset = assets.getJSONObject(assetIndex)
                     if (asset.optString("name").endsWith(extension, ignoreCase = true)) {
-                        return@withContext DesktopUpdate(
+                        val candidate = DesktopUpdate(
                             version = version,
                             downloadUrl = asset.getString("browser_download_url"),
                             releaseUrl = release.getString("html_url"),
                             notes = release.optString("body"),
                         )
+                        if (latest == null || compareVersions(candidate.version, latest.version) > 0) {
+                            latest = candidate
+                        }
+                        break
                     }
                 }
             }
-            null
+            latest
         }
     }
 
