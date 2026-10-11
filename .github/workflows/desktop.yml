@@ -54,6 +54,21 @@ jobs:
         shell: bash
         run: ./gradlew :desktop:${{ matrix.task }} --no-daemon --console=plain
 
+      - name: Integrate Linux package with GNOME
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          PACKAGE="$(find desktop/build/compose/binaries/main/deb -maxdepth 1 -name '*.deb' -print -quit)"
+          STAGE="$RUNNER_TEMP/naviplayer-deb"
+          dpkg-deb --raw-extract "$PACKAGE" "$STAGE"
+          ENTRY="$(find "$STAGE/usr/share/applications" -maxdepth 1 -name '*.desktop' -print -quit)"
+          install -D -m 0644 desktop/src/main/resources/naviplayer.png \
+            "$STAGE/usr/share/icons/hicolor/512x512/apps/naviplayer.png"
+          sed -i 's|^Icon=.*|Icon=naviplayer|' "$ENTRY"
+          sed -i '/^Type=Application$/a StartupWMClass=NaviPlayer' "$ENTRY"
+          mv "$ENTRY" "$STAGE/usr/share/applications/naviplayer.desktop"
+          dpkg-deb --build "$STAGE" "$PACKAGE"
+
       - name: Upload package
         uses: actions/upload-artifact@v4
         with:
