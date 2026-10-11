@@ -23,13 +23,14 @@ fun main() {
         DisposableEffect(runtime) {
             onDispose(runtime::close)
         }
+        val shutdown = {
+            runtime.close()
+            exitApplication()
+            exitProcess(0)
+        }
 
         Window(
-            onCloseRequest = {
-                runtime.close()
-                exitApplication()
-                exitProcess(0)
-            },
+            onCloseRequest = shutdown,
             title = "NaviPlayer",
             icon = painterResource("naviplayer.png"),
             state = WindowState(width = 1280.dp, height = 820.dp),
@@ -40,6 +41,7 @@ fun main() {
                     store = runtime.store,
                     player = runtime.player,
                     appearance = appearance,
+                    onExitForUpdate = shutdown,
                     onAppearanceChange = {
                         appearance = it
                         runtime.store.saveAppearance(it)

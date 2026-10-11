@@ -122,6 +122,7 @@ fun DesktopApp(
     store: SessionStore,
     player: DesktopPlayer,
     appearance: AppearanceSettings,
+    onExitForUpdate: () -> Unit,
     onAppearanceChange: (AppearanceSettings) -> Unit,
 ) {
     var credentials by remember { mutableStateOf(store.load()) }
@@ -139,6 +140,7 @@ fun DesktopApp(
                 credentials = current,
                 player = player,
                 appearance = appearance,
+                onExitForUpdate = onExitForUpdate,
                 onAppearanceChange = onAppearanceChange,
                 onLogout = {
                     player.close()
@@ -232,6 +234,7 @@ private fun PlayerShell(
     credentials: Credentials,
     player: DesktopPlayer,
     appearance: AppearanceSettings,
+    onExitForUpdate: () -> Unit,
     onAppearanceChange: (AppearanceSettings) -> Unit,
     onLogout: () -> Unit,
 ) {
@@ -366,6 +369,7 @@ private fun PlayerShell(
                         updateBusy = true
                         updateError = null
                         runCatching { updater.downloadAndInstall(update) }
+                            .onSuccess { onExitForUpdate() }
                             .onFailure { updateError = it.message ?: "Could not start the installer" }
                         updateBusy = false
                     }
@@ -482,6 +486,7 @@ private fun PlayerShell(
                                 updateBusy = true
                                 updateError = null
                                 runCatching { updater.downloadAndInstall(update) }
+                                    .onSuccess { onExitForUpdate() }
                                     .onFailure { updateError = it.message ?: "Could not start the installer" }
                                 updateBusy = false
                             }
@@ -539,7 +544,7 @@ private fun DesktopUpdateBanner(
             Column(Modifier.weight(1f)) {
                 Text("NaviPlayer ${update.version} is ready", fontWeight = FontWeight.Bold)
                 Text(
-                    error ?: "Download the package and open the system installer.",
+                    error ?: "Download, install with system authentication, then restart NaviPlayer.",
                     color = if (error == null) MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = .78f)
                     else MaterialTheme.colorScheme.error,
                     style = MaterialTheme.typography.bodySmall,
@@ -602,7 +607,7 @@ private fun AppearanceView(
                             updateError ?: if (availableUpdate == null) {
                                 "Checks automatically while the app is open."
                             } else {
-                                "Download it here without opening the releases page."
+                                "Install it here and restart NaviPlayer automatically."
                             },
                             color = if (updateError == null) MaterialTheme.colorScheme.onSurfaceVariant
                             else MaterialTheme.colorScheme.error,

@@ -17,8 +17,8 @@ import java.nio.file.Files
 import java.nio.file.Path
 import java.util.UUID
 import java.util.concurrent.CountDownLatch
-import java.util.concurrent.ExecutorService
 import java.util.concurrent.Executors
+import java.util.concurrent.ScheduledExecutorService
 import java.util.concurrent.TimeUnit
 
 /**
@@ -31,7 +31,7 @@ import java.util.concurrent.TimeUnit
 class DiscordPresence(
     private val applicationId: String = System.getenv("NAVIPLAYER_DISCORD_APP_ID").orEmpty(),
 ) : AutoCloseable {
-    private val worker: ExecutorService = Executors.newSingleThreadExecutor { task ->
+    private val worker: ScheduledExecutorService = Executors.newSingleThreadScheduledExecutor { task ->
         Thread(task, "naviplayer-discord-rpc").apply { isDaemon = true }
     }
     private var connection: DiscordIpcConnection? = null
@@ -40,9 +40,22 @@ class DiscordPresence(
     private val updateLock = Any()
     private var pendingUpdate: PresenceUpdate? = null
     private var updateWorkerRunning = false
+    @Volatile private var desiredActivity: JSONObject? = null
+    @Volatile private var hasDesiredActivity = false
 
     @Volatile
     private var closed = false
+
+    init {
+        worker.scheduleWithFixedDelay(
+            {
+                if (!closed && hasDesiredActivity) submitLatest(desiredActivity)
+            },
+            PRESENCE_REFRESH_SECONDS,
+            PRESENCE_REFRESH_SECONDS,
+            TimeUnit.SECONDS,
+        )
+    }
 
     fun update(song: Song, playing: Boolean) {
         if (applicationId.isBlank() || closed) return
@@ -105,6 +118,8 @@ class DiscordPresence(
     }
 
     private fun submitLatest(activity: JSONObject?) {
+        desiredActivity = activity
+        hasDesiredActivity = true
         var startWorker = false
         synchronized(updateLock) {
             pendingUpdate = PresenceUpdate(activity)
@@ -130,6 +145,7 @@ class DiscordPresence(
     private companion object {
         const val APP_ICON_URL =
             "https://raw.githubusercontent.com/helixoff/NaviPlayer/main/discord-assets/naviplayer.png"
+        const val PRESENCE_REFRESH_SECONDS = 5L
     }
 
     private data class PresenceUpdate(val activity: JSONObject?)

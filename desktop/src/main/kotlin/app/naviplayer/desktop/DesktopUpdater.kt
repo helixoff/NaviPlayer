@@ -68,7 +68,7 @@ class DesktopUpdater {
         }
     }
 
-    suspend fun downloadAndInstall(update: DesktopUpdate) = withContext(Dispatchers.IO) {
+    suspend fun downloadAndInstall(update: DesktopUpdate): Path = withContext(Dispatchers.IO) {
         val extension = if (isWindows()) ".msi" else ".deb"
         val downloads = Path.of(System.getProperty("user.home"), "Downloads")
             .takeIf { Files.isDirectory(it) }
@@ -90,9 +90,9 @@ class DesktopUpdater {
         if (isWindows()) {
             ProcessBuilder("msiexec.exe", "/i", destination.toString()).start()
         } else {
-            runCatching { ProcessBuilder("xdg-open", destination.toString()).start() }
-                .getOrElse { Desktop.getDesktop().open(destination.toFile()) }
+            launchLinuxInstaller(destination)
         }
+        destination
     }
 
     fun openRelease(update: DesktopUpdate) {
@@ -110,6 +110,30 @@ class DesktopUpdater {
     }
 
     private fun isWindows() = System.getProperty("os.name").contains("windows", ignoreCase = true)
+
+    private fun launchLinuxInstaller(packagePath: Path) {
+        check(Files.isExecutable(Path.of("/usr/bin/pkexec"))) {
+            "Automatic updates require pkexec (package: policykit-1)"
+        }
+        val updateLog = packagePath.resolveSibling("NaviPlayer-update.log")
+        val command = """
+            pkexec /usr/bin/apt-get install -y -- "${'$'}1"
+            status=${'$'}?
+            sleep 1
+            nohup /opt/naviplayer/bin/NaviPlayer >/dev/null 2>&1 &
+            exit ${'$'}status
+        """.trimIndent()
+        ProcessBuilder(
+            "/bin/sh",
+            "-c",
+            command,
+            "naviplayer-updater",
+            packagePath.toAbsolutePath().toString(),
+        )
+            .redirectErrorStream(true)
+            .redirectOutput(ProcessBuilder.Redirect.appendTo(updateLog.toFile()))
+            .start()
+    }
 
     companion object {
         private const val RELEASES_API = "https://api.github.com/repos/helixoff/NaviPlayer/releases?per_page=30"
