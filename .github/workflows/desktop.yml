@@ -66,9 +66,6 @@ jobs:
             "$STAGE/usr/share/icons/hicolor/512x512/apps/naviplayer.png"
           sed -i 's|^Icon=.*|Icon=naviplayer|' "$ENTRY"
           sed -i '/^Type=Application$/a StartupWMClass=NaviPlayer' "$ENTRY"
-          mv "$ENTRY" "$STAGE/opt/naviplayer/lib/naviplayer.desktop"
-          sed -i 's/naviplayer-NaviPlayer\.desktop/naviplayer.desktop/g' \
-            "$STAGE/DEBIAN/postinst" "$STAGE/DEBIAN/prerm"
           dpkg-deb --build "$STAGE" "$PACKAGE"
 
       - name: Upload package
