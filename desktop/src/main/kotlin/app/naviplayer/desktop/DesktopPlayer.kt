@@ -65,18 +65,27 @@ class DesktopPlayer(private val discord: DiscordPresence) {
     fun close() = onFxThread {
         mediaPlayer?.dispose()
         mediaPlayer = null
+        playing = false
+        discord.clear()
     }
 
     private fun open(song: Song, client: SubsonicClient) {
         current = song
+        playing = false
         error = null
         positionSeconds = 0.0
         durationSeconds = max(0, song.durationSeconds).toDouble()
+        // Update immediately instead of leaving the previous track in Discord while media is opening.
+        discord.update(song, false, 0.0)
         onFxThread {
             runCatching {
                 mediaPlayer?.dispose()
                 val media = Media(client.streamUrl(song)).also { m ->
-                    m.setOnError { error = "Media: ${m.error?.message ?: "unsupported or unreachable stream"}" }
+                    m.setOnError {
+                        playing = false
+                        error = "Media: ${m.error?.message ?: "unsupported or unreachable stream"}"
+                        discord.clear()
+                    }
                 }
                 MediaPlayer(media).also { player ->
                     mediaPlayer = player
@@ -88,11 +97,15 @@ class DesktopPlayer(private val discord: DiscordPresence) {
                         playing = false
                         discord.update(song, false, positionSeconds)
                     }
-                    player.setOnStopped { playing = false }
+                    player.setOnStopped {
+                        playing = false
+                        discord.update(song, false, positionSeconds)
+                    }
                     player.setOnEndOfMedia { next(client) }
                     player.setOnError {
                         playing = false
                         error = player.error?.message ?: "Playback failed (${song.suffix.ifBlank { "?" }})"
+                        discord.clear()
                     }
                     player.currentTimeProperty().addListener { _, _, time ->
                         positionSeconds = time.toSeconds().takeIf(Double::isFinite) ?: 0.0
@@ -106,6 +119,7 @@ class DesktopPlayer(private val discord: DiscordPresence) {
             }.onFailure {
                 playing = false
                 error = it.message ?: "Playback failed"
+                discord.clear()
             }
         }
     }

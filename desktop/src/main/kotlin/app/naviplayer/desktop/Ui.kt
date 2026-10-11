@@ -42,12 +42,14 @@ import androidx.compose.material.icons.filled.MusicNote
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Shuffle
 import androidx.compose.material.icons.filled.SkipNext
 import androidx.compose.material.icons.filled.SkipPrevious
 import androidx.compose.material.icons.outlined.Home
 import androidx.compose.material.icons.outlined.LibraryMusic
 import androidx.compose.material.icons.outlined.Search
+import androidx.compose.material.icons.outlined.Settings
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -61,6 +63,7 @@ import androidx.compose.material3.NavigationRailItem
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Slider
 import androidx.compose.material3.Surface
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -87,7 +90,7 @@ import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.launch
 import kotlin.math.roundToInt
 
-private enum class DesktopPage { Home, Search, Library }
+private enum class DesktopPage { Home, Search, Library, Settings }
 
 private data class ShellTarget(
     val page: DesktopPage,
@@ -97,20 +100,34 @@ private data class ShellTarget(
 )
 
 @Composable
-fun DesktopApp(store: SessionStore, player: DesktopPlayer) {
+fun DesktopApp(
+    store: SessionStore,
+    player: DesktopPlayer,
+    appearance: AppearanceSettings,
+    onAppearanceChange: (AppearanceSettings) -> Unit,
+) {
     var credentials by remember { mutableStateOf(store.load()) }
     val current = credentials
-    if (current == null) {
-        LoginScreen { value ->
-            store.save(value)
-            credentials = value
-        }
-    } else {
-        val client = remember(current) { SubsonicClient(current, store.salt()) }
-        PlayerShell(client, current, player) {
-            player.close()
-            store.clear()
-            credentials = null
+    Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
+        if (current == null) {
+            LoginScreen { value ->
+                store.save(value)
+                credentials = value
+            }
+        } else {
+            val client = remember(current) { SubsonicClient(current, store.salt()) }
+            PlayerShell(
+                client = client,
+                credentials = current,
+                player = player,
+                appearance = appearance,
+                onAppearanceChange = onAppearanceChange,
+                onLogout = {
+                    player.close()
+                    store.clear()
+                    credentials = null
+                },
+            )
         }
     }
 }
@@ -127,7 +144,10 @@ private fun LoginScreen(onLogin: (Credentials) -> Unit) {
     Box(
         Modifier.fillMaxSize().background(
             Brush.radialGradient(
-                colors = listOf(MaterialTheme.colorScheme.primaryContainer.copy(alpha = .6f), Color.Transparent),
+                colors = listOf(
+                    MaterialTheme.colorScheme.primary.copy(alpha = .22f),
+                    MaterialTheme.colorScheme.background,
+                ),
                 radius = 900f,
             ),
         ),
@@ -193,6 +213,8 @@ private fun PlayerShell(
     client: SubsonicClient,
     credentials: Credentials,
     player: DesktopPlayer,
+    appearance: AppearanceSettings,
+    onAppearanceChange: (AppearanceSettings) -> Unit,
     onLogout: () -> Unit,
 ) {
     var page by remember { mutableStateOf(DesktopPage.Home) }
@@ -257,7 +279,20 @@ private fun PlayerShell(
         }
     }
 
-    Column(Modifier.fillMaxSize()) {
+    val shellBackground = if (appearance.ambientGlow) {
+        Brush.radialGradient(
+            colors = listOf(
+                MaterialTheme.colorScheme.primary.copy(alpha = .10f),
+                MaterialTheme.colorScheme.background,
+                MaterialTheme.colorScheme.background,
+            ),
+            radius = 1200f,
+        )
+    } else {
+        Brush.linearGradient(listOf(MaterialTheme.colorScheme.background, MaterialTheme.colorScheme.background))
+    }
+
+    Column(Modifier.fillMaxSize().background(shellBackground)) {
         Row(Modifier.weight(1f).fillMaxWidth()) {
             NavigationRail(
                 modifier = Modifier.fillMaxHeight().width(96.dp),
@@ -292,6 +327,17 @@ private fun PlayerShell(
                     label = { Text("Library") },
                 )
                 Spacer(Modifier.weight(1f))
+                NavigationRailItem(
+                    selected = page == DesktopPage.Settings,
+                    onClick = { selectedAlbum = null; selectedPlaylist = null; page = DesktopPage.Settings },
+                    icon = {
+                        Icon(
+                            if (page == DesktopPage.Settings) Icons.Default.Settings else Icons.Outlined.Settings,
+                            null,
+                        )
+                    },
+                    label = { Text("Style") },
+                )
                 IconButton(onClick = onLogout, modifier = Modifier.padding(bottom = 18.dp)) {
                     Icon(Icons.AutoMirrored.Filled.Logout, "Log out")
                 }
@@ -323,13 +369,14 @@ private fun PlayerShell(
                         selectedPlaylist = null
                         selectedAlbum = it
                     })
-                    else -> LibraryView(
+                    target.page == DesktopPage.Library -> LibraryView(
                         albums = allAlbums,
                         playlists = playlists,
                         client = client,
                         onAlbum = { selectedPlaylist = null; selectedAlbum = it },
                         onPlaylist = { selectedAlbum = null; selectedPlaylist = it },
                     )
+                    else -> AppearanceView(appearance, onAppearanceChange)
                 }
             }
         }
@@ -337,6 +384,122 @@ private fun PlayerShell(
         error?.let {
             Surface(color = MaterialTheme.colorScheme.errorContainer) {
                 Text(it, Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 8.dp), color = MaterialTheme.colorScheme.onErrorContainer)
+            }
+        }
+    }
+}
+
+@Composable
+private fun AppearanceView(
+    settings: AppearanceSettings,
+    onChange: (AppearanceSettings) -> Unit,
+) {
+    LazyColumn(
+        modifier = Modifier.fillMaxSize(),
+        contentPadding = PaddingValues(32.dp),
+        verticalArrangement = Arrangement.spacedBy(28.dp),
+    ) {
+        item {
+            Text("Appearance", style = MaterialTheme.typography.displaySmall, fontWeight = FontWeight.Bold)
+            Text(
+                "Make NaviPlayer feel at home on your desktop.",
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+        item {
+            Text("Surface", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.SemiBold)
+            Row(Modifier.padding(top = 14.dp), horizontalArrangement = Arrangement.spacedBy(14.dp)) {
+                SurfaceChoice(
+                    title = "Deep night",
+                    subtitle = "Soft charcoal layers",
+                    color = Color(0xFF17141C),
+                    selected = settings.surfaceStyle == DesktopSurfaceStyle.Night,
+                    onClick = { onChange(settings.copy(surfaceStyle = DesktopSurfaceStyle.Night)) },
+                )
+                SurfaceChoice(
+                    title = "AMOLED",
+                    subtitle = "True black background",
+                    color = Color.Black,
+                    selected = settings.surfaceStyle == DesktopSurfaceStyle.Amoled,
+                    onClick = { onChange(settings.copy(surfaceStyle = DesktopSurfaceStyle.Amoled)) },
+                )
+            }
+        }
+        item {
+            Text("Accent", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.SemiBold)
+            Row(Modifier.padding(top = 14.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                DesktopAccent.entries.forEach { accent ->
+                    Surface(
+                        modifier = Modifier
+                            .size(width = 132.dp, height = 86.dp)
+                            .clip(MaterialTheme.shapes.medium)
+                            .clickable { onChange(settings.copy(accent = accent)) },
+                        shape = MaterialTheme.shapes.medium,
+                        color = if (settings.accent == accent) accent.color.copy(alpha = .24f)
+                        else MaterialTheme.colorScheme.surfaceContainerHigh,
+                    ) {
+                        Row(
+                            Modifier.padding(14.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(10.dp),
+                        ) {
+                            Surface(Modifier.size(28.dp), CircleShape, accent.color) {}
+                            Text(accent.label, maxLines = 2, fontWeight = FontWeight.SemiBold)
+                        }
+                    }
+                }
+            }
+        }
+        item {
+            Surface(
+                shape = MaterialTheme.shapes.large,
+                color = MaterialTheme.colorScheme.surfaceContainerHigh,
+                modifier = Modifier.fillMaxWidth(),
+            ) {
+                Row(
+                    Modifier.padding(horizontal = 22.dp, vertical = 18.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Column(Modifier.weight(1f)) {
+                        Text("Ambient glow", fontWeight = FontWeight.SemiBold)
+                        Text(
+                            "A subtle accent glow behind the library",
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            style = MaterialTheme.typography.bodySmall,
+                        )
+                    }
+                    Switch(
+                        checked = settings.ambientGlow,
+                        onCheckedChange = { onChange(settings.copy(ambientGlow = it)) },
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun SurfaceChoice(
+    title: String,
+    subtitle: String,
+    color: Color,
+    selected: Boolean,
+    onClick: () -> Unit,
+) {
+    Surface(
+        modifier = Modifier
+            .size(width = 250.dp, height = 120.dp)
+            .clip(MaterialTheme.shapes.large)
+            .clickable(onClick = onClick),
+        shape = MaterialTheme.shapes.large,
+        color = if (selected) MaterialTheme.colorScheme.primaryContainer
+        else MaterialTheme.colorScheme.surfaceContainerHigh,
+    ) {
+        Row(Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
+            Surface(Modifier.size(58.dp), RoundedCornerShape(18.dp), color) {}
+            Column(Modifier.padding(start = 14.dp)) {
+                Text(title, fontWeight = FontWeight.Bold)
+                Text(subtitle, color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodySmall)
             }
         }
     }

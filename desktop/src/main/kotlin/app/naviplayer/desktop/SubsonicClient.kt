@@ -107,7 +107,12 @@ class SubsonicClient(credentials: Credentials, private val salt: String) {
         val parameters = if (directPlay) {
             mapOf("id" to song.id, "format" to "raw")
         } else {
-            mapOf("id" to song.id, "format" to "mp3", "maxBitRate" to "320")
+            mapOf(
+                "id" to song.id,
+                "format" to "mp3",
+                "maxBitRate" to "320",
+                "estimateContentLength" to "true",
+            )
         }
         return endpoint("stream", parameters).toString()
     }

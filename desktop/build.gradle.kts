@@ -11,11 +11,12 @@ group = "app.naviplayer"
 version = System.getenv("NAVIPLAYER_VERSION") ?: "2.1.0"
 
 kotlin {
-    jvmToolchain(17)
+    jvmToolchain(22)
 }
 
 javafx {
-    version = "21.0.5"
+    // JavaFX 24 adds Linux support for FFmpeg/libavcodec 61 (Debian 13 and newer).
+    version = "24.0.2"
     modules("javafx.media")
 }
 

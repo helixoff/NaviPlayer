@@ -9,6 +9,7 @@ class SessionStore(
     private val directory: Path = defaultConfigDirectory(),
 ) {
     private val sessionFile = directory.resolve("session.properties")
+    private val appearanceFile = directory.resolve("appearance.properties")
 
     fun load(): Credentials? {
         if (!Files.isRegularFile(sessionFile)) return null
@@ -44,6 +45,34 @@ class SessionStore(
 
     fun clear() {
         Files.deleteIfExists(sessionFile)
+    }
+
+    fun loadAppearance(): AppearanceSettings {
+        if (!Files.isRegularFile(appearanceFile)) return AppearanceSettings()
+        return runCatching {
+            val values = Properties().also { properties ->
+                Files.newInputStream(appearanceFile).use(properties::load)
+            }
+            AppearanceSettings(
+                surfaceStyle = values.getProperty("surfaceStyle")
+                    ?.let { DesktopSurfaceStyle.valueOf(it) }
+                    ?: DesktopSurfaceStyle.Night,
+                accent = values.getProperty("accent")
+                    ?.let { DesktopAccent.valueOf(it) }
+                    ?: DesktopAccent.Violet,
+                ambientGlow = values.getProperty("ambientGlow")?.toBooleanStrictOrNull() ?: true,
+            )
+        }.getOrDefault(AppearanceSettings())
+    }
+
+    fun saveAppearance(settings: AppearanceSettings) {
+        Files.createDirectories(directory)
+        val values = Properties().apply {
+            setProperty("surfaceStyle", settings.surfaceStyle.name)
+            setProperty("accent", settings.accent.name)
+            setProperty("ambientGlow", settings.ambientGlow.toString())
+        }
+        Files.newOutputStream(appearanceFile).use { values.store(it, "NaviPlayer desktop appearance") }
     }
 
     fun salt(): String {

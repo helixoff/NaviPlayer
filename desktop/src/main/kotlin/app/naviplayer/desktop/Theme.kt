@@ -8,24 +8,39 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 
-private val NaviColors = darkColorScheme(
-    primary = Color(0xFFFFB59F),
-    onPrimary = Color(0xFF571F12),
-    primaryContainer = Color(0xFF733626),
-    onPrimaryContainer = Color(0xFFFFDBD1),
-    secondary = Color(0xFFC2C5FF),
-    secondaryContainer = Color(0xFF404378),
-    onSecondaryContainer = Color(0xFFE1E0FF),
-    background = Color(0xFF101014),
-    onBackground = Color(0xFFE8E1E5),
-    surface = Color(0xFF101014),
-    onSurface = Color(0xFFE8E1E5),
-    surfaceVariant = Color(0xFF2B292F),
-    onSurfaceVariant = Color(0xFFD6C2C0),
-    surfaceContainer = Color(0xFF1D1B20),
-    surfaceContainerHigh = Color(0xFF28252B),
-    surfaceContainerHighest = Color(0xFF343038),
-    outline = Color(0xFFA5908D),
+enum class DesktopSurfaceStyle { Night, Amoled }
+
+enum class DesktopAccent(val label: String, val color: Color) {
+    Coral("Coral", Color(0xFFFF8E78)),
+    Violet("Violet", Color(0xFFC5A5FF)),
+    Blue("Electric blue", Color(0xFF78A9FF)),
+    Mint("Mint", Color(0xFF62DDBD)),
+}
+
+data class AppearanceSettings(
+    val surfaceStyle: DesktopSurfaceStyle = DesktopSurfaceStyle.Night,
+    val accent: DesktopAccent = DesktopAccent.Violet,
+    val ambientGlow: Boolean = true,
+)
+
+private fun naviColors(settings: AppearanceSettings) = darkColorScheme(
+    primary = settings.accent.color,
+    onPrimary = Color(0xFF17131C),
+    primaryContainer = settings.accent.color.copy(alpha = if (settings.surfaceStyle == DesktopSurfaceStyle.Amoled) .22f else .28f),
+    onPrimaryContainer = Color(0xFFF8EDFF),
+    secondary = settings.accent.color.copy(alpha = .82f),
+    secondaryContainer = settings.accent.color.copy(alpha = .20f),
+    onSecondaryContainer = Color(0xFFF8EDFF),
+    background = if (settings.surfaceStyle == DesktopSurfaceStyle.Amoled) Color.Black else Color(0xFF0E0D12),
+    onBackground = Color(0xFFF1EAF2),
+    surface = if (settings.surfaceStyle == DesktopSurfaceStyle.Amoled) Color.Black else Color(0xFF0E0D12),
+    onSurface = Color(0xFFF1EAF2),
+    surfaceVariant = if (settings.surfaceStyle == DesktopSurfaceStyle.Amoled) Color(0xFF19171D) else Color(0xFF29262E),
+    onSurfaceVariant = Color(0xFFCFC5D2),
+    surfaceContainer = if (settings.surfaceStyle == DesktopSurfaceStyle.Amoled) Color(0xFF0B0A0D) else Color(0xFF19171E),
+    surfaceContainerHigh = if (settings.surfaceStyle == DesktopSurfaceStyle.Amoled) Color(0xFF121015) else Color(0xFF222027),
+    surfaceContainerHighest = if (settings.surfaceStyle == DesktopSurfaceStyle.Amoled) Color(0xFF1B181F) else Color(0xFF302C35),
+    outline = Color(0xFF958B99),
 )
 
 private val NaviShapes = Shapes(
@@ -36,6 +51,6 @@ private val NaviShapes = Shapes(
 )
 
 @Composable
-fun NaviDesktopTheme(content: @Composable () -> Unit) {
-    MaterialTheme(colorScheme = NaviColors, shapes = NaviShapes, content = content)
+fun NaviDesktopTheme(settings: AppearanceSettings, content: @Composable () -> Unit) {
+    MaterialTheme(colorScheme = naviColors(settings), shapes = NaviShapes, content = content)
 }
