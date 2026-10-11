@@ -9,6 +9,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Window
 import androidx.compose.ui.window.WindowState
 import androidx.compose.ui.window.application
+import kotlin.system.exitProcess
 
 fun main() {
     System.setProperty("awt.appClassName", "NaviPlayer")
@@ -24,6 +25,7 @@ fun main() {
                 discord.close()
                 mpris.close()
                 exitApplication()
+                exitProcess(0)
             },
             title = "NaviPlayer",
             icon = painterResource("naviplayer.png"),

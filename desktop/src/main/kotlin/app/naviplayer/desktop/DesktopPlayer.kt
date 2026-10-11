@@ -7,7 +7,9 @@ import androidx.compose.runtime.setValue
 import javafx.application.Platform
 import javafx.scene.media.Media
 import javafx.scene.media.MediaPlayer
+import java.util.concurrent.CountDownLatch
 import java.util.concurrent.CopyOnWriteArrayList
+import java.util.concurrent.TimeUnit
 import kotlin.math.max
 
 class DesktopPlayer(private val discord: DiscordPresence) {
@@ -86,13 +88,27 @@ class DesktopPlayer(private val discord: DiscordPresence) {
         mediaPlayer?.volume = value.coerceIn(0.0, 1.0)
     }
 
-    fun close() = onFxThread {
-        playbackGeneration++
-        mediaPlayer?.dispose()
-        mediaPlayer = null
-        playing = false
-        discord.clear()
-        notifyStateChanged()
+    fun close() {
+        val closed = CountDownLatch(1)
+        val release = {
+            try {
+                playbackGeneration++
+                mediaPlayer?.stop()
+                mediaPlayer?.dispose()
+                mediaPlayer = null
+                playing = false
+                notifyStateChanged()
+            } finally {
+                closed.countDown()
+            }
+        }
+        if (Platform.isFxApplicationThread()) {
+            release()
+        } else {
+            runCatching { Platform.runLater(release) }.onFailure { closed.countDown() }
+            runCatching { closed.await(2, TimeUnit.SECONDS) }
+        }
+        runCatching { Platform.exit() }
     }
 
     fun addStateListener(listener: () -> Unit): AutoCloseable {

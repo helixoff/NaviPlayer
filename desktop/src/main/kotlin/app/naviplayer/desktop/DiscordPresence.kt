@@ -16,8 +16,10 @@ import java.nio.channels.SocketChannel
 import java.nio.file.Files
 import java.nio.file.Path
 import java.util.UUID
+import java.util.concurrent.CountDownLatch
 import java.util.concurrent.ExecutorService
 import java.util.concurrent.Executors
+import java.util.concurrent.TimeUnit
 
 /**
  * Lightweight Discord Rich Presence client using Discord's local IPC protocol.
@@ -82,12 +84,24 @@ class DiscordPresence(
     override fun close() {
         if (closed) return
         closed = true
-        worker.execute {
-            runCatching { connection?.setActivity(null) }
-            connection?.close()
-            connection = null
+        synchronized(updateLock) { pendingUpdate = null }
+        val cleared = CountDownLatch(1)
+        runCatching {
+            worker.execute {
+                try {
+                    runCatching { connection?.setActivity(null) }
+                    connection?.close()
+                    connection = null
+                } finally {
+                    cleared.countDown()
+                }
+            }
+        }.onFailure {
+            cleared.countDown()
         }
         worker.shutdown()
+        runCatching { cleared.await(2, TimeUnit.SECONDS) }
+        if (!worker.isTerminated) worker.shutdownNow()
     }
 
     private fun submitLatest(activity: JSONObject?) {
