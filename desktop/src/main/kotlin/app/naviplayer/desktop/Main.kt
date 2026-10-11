@@ -13,11 +13,13 @@ fun main() = application {
     val store = SessionStore()
     val discord = DiscordPresence()
     val player = DesktopPlayer(discord)
+    val mpris = MprisService(player)
 
     Window(
         onCloseRequest = {
             player.close()
             discord.close()
+            mpris.close()
             exitApplication()
         },
         title = "NaviPlayer",

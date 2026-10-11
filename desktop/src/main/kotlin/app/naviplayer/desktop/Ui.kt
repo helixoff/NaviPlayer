@@ -765,11 +765,11 @@ private fun PlayerBar(client: SubsonicClient, player: DesktopPlayer) {
                     Text(song.artist, maxLines = 1, overflow = TextOverflow.Ellipsis, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
             }
-            IconButton(onClick = { player.previous(client) }) { Icon(Icons.Default.SkipPrevious, "Previous") }
+            IconButton(onClick = player::previous) { Icon(Icons.Default.SkipPrevious, "Previous") }
             FilledIconButton(onClick = player::toggle, modifier = Modifier.size(54.dp)) {
                 Icon(if (player.playing) Icons.Default.Pause else Icons.Default.PlayArrow, if (player.playing) "Pause" else "Play")
             }
-            IconButton(onClick = { player.next(client) }) { Icon(Icons.Default.SkipNext, "Next") }
+            IconButton(onClick = player::next) { Icon(Icons.Default.SkipNext, "Next") }
             Spacer(Modifier.width(20.dp))
             Text(formatTime(player.positionSeconds), style = MaterialTheme.typography.labelMedium)
             Slider(

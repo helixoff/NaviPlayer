@@ -7,6 +7,7 @@ import androidx.compose.runtime.setValue
 import javafx.application.Platform
 import javafx.scene.media.Media
 import javafx.scene.media.MediaPlayer
+import java.util.concurrent.CopyOnWriteArrayList
 import kotlin.math.max
 
 class DesktopPlayer(private val discord: DiscordPresence) {
@@ -24,6 +25,8 @@ class DesktopPlayer(private val discord: DiscordPresence) {
     private var mediaPlayer: MediaPlayer? = null
     private var queue: List<Song> = emptyList()
     private var queueIndex = -1
+    private var activeClient: SubsonicClient? = null
+    private val stateListeners = CopyOnWriteArrayList<() -> Unit>()
 
     init {
         runCatching { Platform.startup {} }
@@ -32,7 +35,8 @@ class DesktopPlayer(private val discord: DiscordPresence) {
     fun play(song: Song, songs: List<Song>, client: SubsonicClient) {
         queue = songs
         queueIndex = songs.indexOfFirst { it.id == song.id }.coerceAtLeast(0)
-        open(song, client)
+        activeClient = client
+        open(song)
     }
 
     fun toggle() = onFxThread {
@@ -46,16 +50,28 @@ class DesktopPlayer(private val discord: DiscordPresence) {
         }
     }
 
-    fun next(client: SubsonicClient) {
-        if (queue.isEmpty()) return
-        queueIndex = (queueIndex + 1).mod(queue.size)
-        open(queue[queueIndex], client)
+    fun play() = onFxThread {
+        mediaPlayer?.play()
     }
 
-    fun previous(client: SubsonicClient) {
-        if (queue.isEmpty()) return
+    fun pause() = onFxThread {
+        mediaPlayer?.pause()
+    }
+
+    fun stop() = onFxThread {
+        mediaPlayer?.stop()
+    }
+
+    fun next() {
+        if (queue.isEmpty() || activeClient == null) return
+        queueIndex = (queueIndex + 1).mod(queue.size)
+        open(queue[queueIndex])
+    }
+
+    fun previous() {
+        if (queue.isEmpty() || activeClient == null) return
         queueIndex = (queueIndex - 1 + queue.size).mod(queue.size)
-        open(queue[queueIndex], client)
+        open(queue[queueIndex])
     }
 
     fun seek(seconds: Double) = onFxThread {
@@ -67,9 +83,16 @@ class DesktopPlayer(private val discord: DiscordPresence) {
         mediaPlayer = null
         playing = false
         discord.clear()
+        notifyStateChanged()
     }
 
-    private fun open(song: Song, client: SubsonicClient) {
+    fun addStateListener(listener: () -> Unit): AutoCloseable {
+        stateListeners += listener
+        return AutoCloseable { stateListeners -= listener }
+    }
+
+    private fun open(song: Song) {
+        val client = activeClient ?: return
         current = song
         playing = false
         error = null
@@ -77,6 +100,7 @@ class DesktopPlayer(private val discord: DiscordPresence) {
         durationSeconds = max(0, song.durationSeconds).toDouble()
         // Update immediately instead of leaving the previous track in Discord while media is opening.
         discord.update(song, false, 0.0)
+        notifyStateChanged()
         onFxThread {
             runCatching {
                 mediaPlayer?.dispose()
@@ -85,6 +109,7 @@ class DesktopPlayer(private val discord: DiscordPresence) {
                         playing = false
                         error = "Media: ${m.error?.message ?: "unsupported or unreachable stream"}"
                         discord.clear()
+                        notifyStateChanged()
                     }
                 }
                 MediaPlayer(media).also { player ->
@@ -92,20 +117,24 @@ class DesktopPlayer(private val discord: DiscordPresence) {
                     player.setOnPlaying {
                         playing = true
                         discord.update(song, true, positionSeconds)
+                        notifyStateChanged()
                     }
                     player.setOnPaused {
                         playing = false
                         discord.update(song, false, positionSeconds)
+                        notifyStateChanged()
                     }
                     player.setOnStopped {
                         playing = false
                         discord.update(song, false, positionSeconds)
+                        notifyStateChanged()
                     }
-                    player.setOnEndOfMedia { next(client) }
+                    player.setOnEndOfMedia { next() }
                     player.setOnError {
                         playing = false
                         error = player.error?.message ?: "Playback failed (${song.suffix.ifBlank { "?" }})"
                         discord.clear()
+                        notifyStateChanged()
                     }
                     player.currentTimeProperty().addListener { _, _, time ->
                         positionSeconds = time.toSeconds().takeIf(Double::isFinite) ?: 0.0
@@ -120,8 +149,13 @@ class DesktopPlayer(private val discord: DiscordPresence) {
                 playing = false
                 error = it.message ?: "Playback failed"
                 discord.clear()
+                notifyStateChanged()
             }
         }
+    }
+
+    private fun notifyStateChanged() {
+        stateListeners.forEach { listener -> runCatching(listener) }
     }
 
     private fun onFxThread(action: () -> Unit) {

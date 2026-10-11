@@ -29,6 +29,8 @@ dependencies {
     implementation("org.json:json:20240303")
     implementation("io.coil-kt.coil3:coil-compose:3.0.4")
     implementation("io.coil-kt.coil3:coil-network-okhttp:3.0.4")
+    implementation("com.github.hypfvieh:dbus-java-core:5.2.2")
+    implementation("com.github.hypfvieh:dbus-java-transport-native-unixsocket:5.2.2")
 }
 
 compose.desktop {
