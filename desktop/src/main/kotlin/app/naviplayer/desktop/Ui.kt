@@ -105,8 +105,8 @@ private enum class DesktopPage { Home, Search, Library, Settings }
 private const val UPDATE_CHECK_INTERVAL_MS = 15 * 60 * 1_000L
 
 private enum class TrackCollection(val title: String, val subtitle: String) {
-    AllTracks("All tracks", "Every song in your library"),
-    LooseTracks("Loose tracks", "Songs without proper album tags"),
+    AllTracks("All tracks", "One shuffle for this app session"),
+    LooseTracks("Loose tracks", "Same app-session order, without proper album tags"),
 }
 
 private data class ShellTarget(
@@ -283,9 +283,10 @@ private fun PlayerShell(
         try {
             coroutineScope {
                 val newAlbums = async { client.newestAlbums() }
-                val randomSongs = async { client.randomSongs() }
+                val sessionQueue = async { client.allSongs().shuffled() }
                 albums = newAlbums.await()
-                suggested = randomSongs.await()
+                // Один порядок создаётся при входе и живёт до полного закрытия приложения.
+                suggested = sessionQueue.await()
             }
         } catch (failure: Exception) {
             error = failure.message
@@ -327,16 +328,15 @@ private fun PlayerShell(
         }
     }
 
-    LaunchedEffect(selectedCollection) {
+    LaunchedEffect(selectedCollection, suggested) {
         val collection = selectedCollection ?: return@LaunchedEffect
         collectionLoading = true
         collectionSongs = emptyList()
         collectionSongs = runCatching {
-            val songs = client.allSongs()
             when (collection) {
-                TrackCollection.AllTracks -> songs
-                TrackCollection.LooseTracks -> songs.filter(Song::isLoose)
-            }.sortedWith(compareBy(String.CASE_INSENSITIVE_ORDER) { it.title })
+                TrackCollection.AllTracks -> suggested
+                TrackCollection.LooseTracks -> suggested.filter(Song::isLoose)
+            }
         }.getOrElse {
             error = it.message
             emptyList()
@@ -754,7 +754,8 @@ private fun HomeView(
                         Text("ready whenever you are", color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = .75f))
                     }
                     FilledIconButton(
-                        onClick = { suggested.randomOrNull()?.let { player.play(it, suggested, client) } },
+                        enabled = suggested.isNotEmpty(),
+                        onClick = { suggested.firstOrNull()?.let { player.play(it, suggested, client) } },
                         modifier = Modifier.size(64.dp),
                     ) { Icon(Icons.Default.Shuffle, "Shuffle", Modifier.size(30.dp)) }
                 }
@@ -932,8 +933,7 @@ private fun TrackCollectionView(
             FilledIconButton(
                 enabled = songs.isNotEmpty(),
                 onClick = {
-                    val shuffled = songs.shuffled()
-                    shuffled.firstOrNull()?.let { player.play(it, shuffled, client) }
+                    songs.firstOrNull()?.let { player.play(it, songs, client) }
                 },
                 modifier = Modifier.padding(start = 8.dp).size(72.dp),
             ) {
