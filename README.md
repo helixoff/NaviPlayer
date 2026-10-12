@@ -57,9 +57,8 @@ The debug APK is written to `app/build/outputs/apk/debug/` and uses Android's st
 
 ## Discord Rich Presence
 
-Desktop Rich Presence is deliberately optional and never blocks playback. Create an application in the
-[Discord Developer Portal](https://discord.com/developers/applications), copy its Application ID and add Rich
-Presence images named `naviplayer`, `playing` and `paused`. Then start NaviPlayer with the application ID:
+Desktop Rich Presence is optional, never blocks playback, and uses NaviPlayer's built-in Discord Application ID.
+It starts automatically when Discord is running. To override it with another application, launch NaviPlayer with:
 
 ```bash
 NAVIPLAYER_DISCORD_APP_ID=123456789012345678 naviplayer

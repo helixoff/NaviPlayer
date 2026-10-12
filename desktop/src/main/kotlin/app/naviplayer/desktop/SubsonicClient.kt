@@ -166,6 +166,8 @@ class SubsonicClient(credentials: Credentials, private val salt: String) {
         endpoint("getCoverArt", mapOf("id" to it, "size" to size.toString())).toString()
     }
 
+    fun playbackWebhookAuth() = PlaybackWebhookAuth(username, token, salt)
+
     companion object {
         private val JAVAFX_FORMATS = setOf("mp3")
 
@@ -176,3 +178,5 @@ class SubsonicClient(credentials: Credentials, private val salt: String) {
             .joinToString("") { "%02x".format(it) }
     }
 }
+
+data class PlaybackWebhookAuth(val username: String, val token: String, val salt: String)

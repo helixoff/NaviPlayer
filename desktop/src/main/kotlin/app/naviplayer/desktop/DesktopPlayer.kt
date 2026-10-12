@@ -12,7 +12,10 @@ import java.util.concurrent.CopyOnWriteArrayList
 import java.util.concurrent.TimeUnit
 import kotlin.math.max
 
-class DesktopPlayer(private val discord: DiscordPresence) {
+class DesktopPlayer(
+    private val discord: DiscordPresence,
+    private val playbackWebhook: PlaybackWebhookReporter,
+) {
     var current by mutableStateOf<Song?>(null)
         private set
     var playing by mutableStateOf(false)
@@ -75,7 +78,10 @@ class DesktopPlayer(private val discord: DiscordPresence) {
     }
 
     fun seek(seconds: Double) = onFxThread {
-        mediaPlayer?.seek(javafx.util.Duration.seconds(seconds.coerceAtLeast(0.0)))
+        val target = seconds.coerceAtLeast(0.0)
+        mediaPlayer?.seek(javafx.util.Duration.seconds(target))
+        positionSeconds = target
+        notifyStateChanged()
     }
 
     fun changeVolume(value: Double) {
@@ -195,6 +201,7 @@ class DesktopPlayer(private val discord: DiscordPresence) {
     }
 
     private fun notifyStateChanged() {
+        playbackWebhook.update(current, playing, positionSeconds, durationSeconds, activeClient)
         stateListeners.forEach { listener -> runCatching(listener) }
     }
 

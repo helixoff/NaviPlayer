@@ -2,6 +2,8 @@ package app.naviplayer
 
 import android.app.PendingIntent
 import android.content.Intent
+import android.os.Handler
+import android.os.Looper
 import androidx.annotation.OptIn
 import androidx.media3.common.AudioAttributes
 import androidx.media3.common.C
@@ -23,6 +25,14 @@ import androidx.media3.session.MediaSessionService
 @OptIn(UnstableApi::class)
 class PlaybackService : MediaSessionService() {
     private var session: MediaSession? = null
+    private val heartbeatHandler = Handler(Looper.getMainLooper())
+    private lateinit var playbackWebhook: PlaybackWebhookReporter
+    private val heartbeat = object : Runnable {
+        override fun run() {
+            session?.player?.let(playbackWebhook::report)
+            heartbeatHandler.postDelayed(this, 15_000)
+        }
+    }
 
     override fun onCreate() {
         super.onCreate()
@@ -58,9 +68,21 @@ class PlaybackService : MediaSessionService() {
             .setWakeMode(C.WAKE_MODE_NETWORK)
             .build()
 
+        playbackWebhook = PlaybackWebhookReporter()
+
         // Как только сменился трек или очередь — греем следующие несколько треков в кэш.
         player.addListener(object : Player.Listener {
-            override fun onMediaItemTransition(mediaItem: MediaItem?, reason: Int) = TrackCache.prefetchAround(this@PlaybackService, player)
+            override fun onMediaItemTransition(mediaItem: MediaItem?, reason: Int) {
+                TrackCache.prefetchAround(this@PlaybackService, player)
+                playbackWebhook.report(player)
+            }
+            override fun onIsPlayingChanged(isPlaying: Boolean) = playbackWebhook.report(player)
+            override fun onPlaybackStateChanged(playbackState: Int) = playbackWebhook.report(player)
+            override fun onPositionDiscontinuity(
+                oldPosition: Player.PositionInfo,
+                newPosition: Player.PositionInfo,
+                reason: Int,
+            ) = playbackWebhook.report(player)
             override fun onShuffleModeEnabledChanged(enabled: Boolean) = TrackCache.prefetchAround(this@PlaybackService, player)
             override fun onTimelineChanged(timeline: androidx.media3.common.Timeline, reason: Int) {
                 if (reason == Player.TIMELINE_CHANGE_REASON_PLAYLIST_CHANGED) TrackCache.prefetchAround(this@PlaybackService, player)
@@ -73,6 +95,7 @@ class PlaybackService : MediaSessionService() {
             PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
         )
         session = MediaSession.Builder(this, player).setSessionActivity(openApp).build()
+        heartbeatHandler.postDelayed(heartbeat, 15_000)
     }
 
     override fun onGetSession(controllerInfo: MediaSession.ControllerInfo) = session
@@ -83,8 +106,11 @@ class PlaybackService : MediaSessionService() {
     }
 
     override fun onDestroy() {
+        heartbeatHandler.removeCallbacks(heartbeat)
+        session?.player?.let(playbackWebhook::report)
         session?.run { player.release(); release() }
         session = null
+        playbackWebhook.close()
         super.onDestroy()
     }
 }

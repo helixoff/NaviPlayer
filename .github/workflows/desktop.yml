@@ -102,7 +102,7 @@ jobs:
             echo "- **Linux:** install the `.deb` package."
             echo "- **Windows:** run the `.msi` installer."
             echo
-            printf '%s\n' 'Discord Rich Presence is enabled when `NAVIPLAYER_DISCORD_APP_ID` is set.'
+            printf '%s\n' 'Discord Rich Presence is enabled automatically when Discord is running.'
           } > desktop-release-notes.md
 
       - name: Publish versioned release

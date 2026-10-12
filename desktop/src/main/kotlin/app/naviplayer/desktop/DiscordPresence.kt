@@ -29,7 +29,9 @@ import java.util.concurrent.TimeUnit
  * playback.
  */
 class DiscordPresence(
-    private val applicationId: String = System.getenv("NAVIPLAYER_DISCORD_APP_ID").orEmpty(),
+    private val applicationId: String = System.getenv("NAVIPLAYER_DISCORD_APP_ID")
+        ?.takeIf(String::isNotBlank)
+        ?: DEFAULT_APPLICATION_ID,
 ) : AutoCloseable {
     private val worker: ScheduledExecutorService = Executors.newSingleThreadScheduledExecutor { task ->
         Thread(task, "naviplayer-discord-rpc").apply { isDaemon = true }
@@ -143,6 +145,7 @@ class DiscordPresence(
     }
 
     private companion object {
+        const val DEFAULT_APPLICATION_ID = "1558612549287682078"
         const val APP_ICON_URL =
             "https://raw.githubusercontent.com/helixoff/NaviPlayer/main/discord-assets/naviplayer.png"
         const val PRESENCE_REFRESH_SECONDS = 5L

@@ -55,7 +55,8 @@ fun main() {
 private class DesktopRuntime : AutoCloseable {
     val store = SessionStore()
     private val discord = DiscordPresence()
-    val player = DesktopPlayer(discord)
+    private val playbackWebhook = PlaybackWebhookReporter()
+    val player = DesktopPlayer(discord, playbackWebhook)
     private val mpris = MprisService(player)
     private val closed = AtomicBoolean(false)
     private val shutdownHook = Thread(::close, "naviplayer-shutdown")
@@ -68,6 +69,7 @@ private class DesktopRuntime : AutoCloseable {
         if (!closed.compareAndSet(false, true)) return
 
         player.close()
+        playbackWebhook.close()
         mpris.close()
         discord.close()
         if (Thread.currentThread() !== shutdownHook) {
