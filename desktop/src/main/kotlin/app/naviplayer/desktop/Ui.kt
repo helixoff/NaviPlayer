@@ -755,7 +755,7 @@ private fun HomeView(
                     }
                     FilledIconButton(
                         enabled = suggested.isNotEmpty(),
-                        onClick = { suggested.firstOrNull()?.let { player.play(it, suggested, client) } },
+                        onClick = { suggested.randomOrNull()?.let { player.play(it, suggested, client) } },
                         modifier = Modifier.size(64.dp),
                     ) { Icon(Icons.Default.Shuffle, "Shuffle", Modifier.size(30.dp)) }
                 }
@@ -933,7 +933,7 @@ private fun TrackCollectionView(
             FilledIconButton(
                 enabled = songs.isNotEmpty(),
                 onClick = {
-                    songs.firstOrNull()?.let { player.play(it, songs, client) }
+                    songs.randomOrNull()?.let { player.play(it, songs, client) }
                 },
                 modifier = Modifier.padding(start = 8.dp).size(72.dp),
             ) {
