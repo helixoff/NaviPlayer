@@ -58,6 +58,7 @@ private class DesktopRuntime : AutoCloseable {
     private val playbackWebhook = PlaybackWebhookReporter()
     val player = DesktopPlayer(discord, playbackWebhook)
     private val mpris = MprisService(player)
+    private val windowsMediaKeys = WindowsMediaKeyService(player)
     private val closed = AtomicBoolean(false)
     private val shutdownHook = Thread(::close, "naviplayer-shutdown")
 
@@ -68,9 +69,10 @@ private class DesktopRuntime : AutoCloseable {
     override fun close() {
         if (!closed.compareAndSet(false, true)) return
 
+        windowsMediaKeys.close()
+        mpris.close()
         player.close()
         playbackWebhook.close()
-        mpris.close()
         discord.close()
         if (Thread.currentThread() !== shutdownHook) {
             runCatching { Runtime.getRuntime().removeShutdownHook(shutdownHook) }

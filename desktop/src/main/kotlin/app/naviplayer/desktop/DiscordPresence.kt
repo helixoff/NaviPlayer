@@ -212,14 +212,17 @@ private class DiscordIpcConnection(
     }
 
     private fun send(opcode: Int, payload: ByteArray) {
-        val header = ByteBuffer.allocate(HEADER_SIZE)
+        // Discord's Windows named pipe is message-oriented and requires the
+        // header and payload to be written as one frame. Separate writes work
+        // with Unix stream sockets but are interpreted as two pipe messages.
+        val frame = ByteBuffer.allocate(HEADER_SIZE + payload.size)
             .order(ByteOrder.LITTLE_ENDIAN)
             .putInt(opcode)
             .putInt(payload.size)
+            .put(payload)
             .array()
         synchronized(output) {
-            output.write(header)
-            output.write(payload)
+            output.write(frame)
             output.flush()
         }
     }
