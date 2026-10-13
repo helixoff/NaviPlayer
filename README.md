@@ -96,3 +96,10 @@ Credentials and the optional profile image are stored locally on the device. The
 Source code is available under the [MIT License](LICENSE). The bundled Google Sans font files retain their Open Font License notice in `app/src/main/res/raw/google_sans_ofl.txt`.
 
 NaviPlayer is an independent project and is not affiliated with the Navidrome project.
+
+## Development continuity
+
+Repository-wide instructions and durable project state live in
+[AGENTS.md](AGENTS.md), [PROJECT_CONTEXT.md](PROJECT_CONTEXT.md), and
+[TODO.md](TODO.md). Keep them updated with non-trivial changes so work can be
+resumed without access to an earlier chat.

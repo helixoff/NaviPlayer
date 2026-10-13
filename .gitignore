@@ -10,3 +10,4 @@ local.properties
 *.properties.local
 captures/
 app/release/
+/work/
