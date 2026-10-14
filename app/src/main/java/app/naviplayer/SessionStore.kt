@@ -48,6 +48,24 @@ class SessionStore(context: Context) {
 
     fun clearHistory() = prefs.edit().remove("history").apply()
 
+    fun loadAppearance(): AndroidAppearanceSettings = AndroidAppearanceSettings(
+        themeMode = prefs.getString("theme_mode", null)
+            ?.let { runCatching { AppThemeMode.valueOf(it) }.getOrNull() }
+            ?: AppThemeMode.System,
+        accent = prefs.getString("accent", null)
+            ?.let { runCatching { AppAccent.valueOf(it) }.getOrNull() }
+            ?: AppAccent.Dynamic,
+        amoled = prefs.getBoolean("amoled", false),
+    )
+
+    fun saveAppearance(settings: AndroidAppearanceSettings) {
+        prefs.edit()
+            .putString("theme_mode", settings.themeMode.name)
+            .putString("accent", settings.accent.name)
+            .putBoolean("amoled", settings.amoled)
+            .apply()
+    }
+
     // Local profile customisation
     fun avatarUri(): String? = prefs.getString("avatar_uri", null)
 

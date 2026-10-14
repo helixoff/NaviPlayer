@@ -21,9 +21,29 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 
+enum class AppThemeMode(val label: String) {
+    System("System"),
+    Light("Light"),
+    Dark("Dark"),
+}
+
+enum class AppAccent(val label: String, val light: Color, val dark: Color) {
+    Dynamic("Dynamic", Color(0xFF6750A4), Color(0xFFD0BCFF)),
+    Coral("Coral", Color(0xFF9A452F), Color(0xFFFFB59F)),
+    Violet("Violet", Color(0xFF6750A4), Color(0xFFD0BCFF)),
+    Blue("Blue", Color(0xFF315DA8), Color(0xFFA9C7FF)),
+    Mint("Mint", Color(0xFF006B59), Color(0xFF71DBC2)),
+}
+
+data class AndroidAppearanceSettings(
+    val themeMode: AppThemeMode = AppThemeMode.System,
+    val accent: AppAccent = AppAccent.Dynamic,
+    val amoled: Boolean = false,
+)
+
 /**
- * Единая палитра приложения. Все значения берутся из текущей [MaterialTheme.colorScheme],
- * поэтому на Android 12+ приложение красится под обои (Material You), а ниже — в фиолетовую схему.
+ * Shared application palette. Values come from [MaterialTheme.colorScheme], so
+ * persisted theme, accent, dynamic-colour, and AMOLED choices apply everywhere.
  */
 object Pal {
     val Bg: Color @Composable @ReadOnlyComposable get() = MaterialTheme.colorScheme.surface
@@ -162,14 +182,37 @@ private val NaviShapes = Shapes(
 )
 
 @Composable
-fun NaviTheme(content: @Composable () -> Unit) {
-    val dark = isSystemInDarkTheme()
+fun NaviTheme(settings: AndroidAppearanceSettings, content: @Composable () -> Unit) {
+    val dark = when (settings.themeMode) {
+        AppThemeMode.System -> isSystemInDarkTheme()
+        AppThemeMode.Light -> false
+        AppThemeMode.Dark -> true
+    }
     val ctx = LocalContext.current
-    val scheme = when {
-        Build.VERSION.SDK_INT >= Build.VERSION_CODES.S ->
+    val baseScheme = when {
+        settings.accent == AppAccent.Dynamic && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S ->
             if (dark) dynamicDarkColorScheme(ctx) else dynamicLightColorScheme(ctx)
         dark -> DarkScheme
         else -> LightScheme
     }
+    val accentedScheme = if (settings.accent == AppAccent.Dynamic) baseScheme else {
+        val accent = if (dark) settings.accent.dark else settings.accent.light
+        baseScheme.copy(
+            primary = accent,
+            secondary = accent,
+            inversePrimary = if (dark) settings.accent.light else settings.accent.dark,
+        )
+    }
+    val scheme = if (dark && settings.amoled) {
+        accentedScheme.copy(
+            background = Color.Black,
+            surface = Color.Black,
+            surfaceContainerLowest = Color.Black,
+            surfaceContainerLow = Color(0xFF080808),
+            surfaceContainer = Color(0xFF0D0D0D),
+            surfaceContainerHigh = Color(0xFF141414),
+            surfaceContainerHighest = Color(0xFF1B1B1B),
+        )
+    } else accentedScheme
     MaterialTheme(colorScheme = scheme, typography = NaviTypography, shapes = NaviShapes, content = content)
 }

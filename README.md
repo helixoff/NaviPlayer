@@ -7,7 +7,7 @@ This repository contains only client applications; server-side tooling and perso
 ## Features
 
 - Sign in to an existing Navidrome account over the Subsonic API
-- Material 3 interface with dynamic colours on Android 12+
+- Material 3 interface with system/light/dark themes, selectable accents, dynamic colours on Android 12+, and AMOLED surfaces
 - Artwork-derived colours and glow in the now-playing screen
 - Background playback and system media controls through Android Media3
 - Smooth wavy playback progress, seeking, queue, shuffle and repeat
@@ -20,8 +20,10 @@ This repository contains only client applications; server-side tooling and perso
 ### Desktop
 
 - A wide layout designed for mouse and keyboard
+- Enter-to-search and a Space play/pause shortcut that never activates the focused track row
 - Recent albums, random recommendations, server search and album pages
 - Cover artwork, queue navigation, playback and seeking
+- Persistent surface, accent, density, glow, and motion preferences
 - Native `.deb` packages for Linux and `.msi` installers for Windows
 - Optional Discord Rich Presence with the current song and playback time
 

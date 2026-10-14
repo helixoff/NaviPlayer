@@ -1,6 +1,6 @@
 # NaviPlayer project context
 
-Last updated: 2026-10-13
+Last updated: 2026-10-14
 
 This file is the durable handoff for humans and coding agents. Update it with
 every meaningful change so losing a chat does not mean losing the project state.
@@ -47,6 +47,34 @@ Shutdown order matters: external control services are closed before the player,
 then webhook and Discord resources are released.
 
 ## Recent work and decisions
+
+### Desktop responsiveness, keyboard controls, and appearance — 2026-10-14
+
+- Desktop Home no longer waits for the complete (up to 6,000-track) library
+  before first paint. Home recommendations and Library metadata load
+  independently, and the stable shuffled all-tracks queue is fetched lazily the
+  first time All tracks or Loose tracks is opened.
+- JavaFX playback callbacks now publish Compose state on the AWT UI thread.
+  Progress updates are coalesced to four per second and ignore sub-150 ms
+  changes, keeping decoder callbacks light and reducing UI churn on Windows and
+  Linux. Queue navigation is serialized on the same UI thread.
+- Desktop search submits with Enter. An app-level Space shortcut consumes the
+  focused row/button event and toggles the current MediaPlayer, so it cannot
+  accidentally start a different track. Space remains available while typing
+  in the search field.
+- Desktop appearance now persists six accents, comfortable/compact density,
+  motion effects, ambient glow, and deep-night/AMOLED surfaces.
+- Android appearance now persists System/Light/Dark mode, Dynamic/Coral/Violet/
+  Blue/Mint accents, and an AMOLED dark-surface option. Controls live on the
+  profile screen and apply immediately.
+
+Verification performed on Windows:
+
+- `:desktop:compileKotlin` succeeded with JDK 22.
+- `:desktop:createDistributable` succeeded and produced the Windows app image.
+- `git diff --check` succeeded before the commit.
+- Android source was not compiled because no Android SDK is installed in the
+  local environment; this remains a required CI/device check.
 
 ### Windows media keys and Discord RPC — 2026-10-13
 

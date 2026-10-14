@@ -7,9 +7,12 @@ import androidx.compose.runtime.setValue
 import javafx.application.Platform
 import javafx.scene.media.Media
 import javafx.scene.media.MediaPlayer
+import java.awt.EventQueue
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.CopyOnWriteArrayList
 import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicBoolean
+import kotlin.math.abs
 import kotlin.math.max
 
 class DesktopPlayer(
@@ -36,21 +39,26 @@ class DesktopPlayer(
     private val stateListeners = CopyOnWriteArrayList<() -> Unit>()
     @Volatile private var playbackGeneration = 0L
     private var lastPositionUpdateNanos = 0L
+    @Volatile private var latestPositionSeconds = 0.0
+    @Volatile private var latestPositionGeneration = 0L
+    private val positionUpdateQueued = AtomicBoolean(false)
 
     init {
         runCatching { Platform.startup {} }
     }
 
     fun play(song: Song, songs: List<Song>, client: SubsonicClient) {
-        queue = songs
-        queueIndex = songs.indexOfFirst { it.id == song.id }.coerceAtLeast(0)
-        activeClient = client
-        open(song)
+        onUiThread {
+            queue = songs
+            queueIndex = songs.indexOfFirst { it.id == song.id }.coerceAtLeast(0)
+            activeClient = client
+            open(song)
+        }
     }
 
     fun toggle() = onFxThread {
         val player = mediaPlayer ?: return@onFxThread
-        if (playing) player.pause() else player.play()
+        if (player.status == MediaPlayer.Status.PLAYING) player.pause() else player.play()
     }
 
     fun play() = onFxThread {
@@ -66,22 +74,28 @@ class DesktopPlayer(
     }
 
     fun next() {
-        if (queue.isEmpty() || activeClient == null) return
-        queueIndex = (queueIndex + 1).mod(queue.size)
-        open(queue[queueIndex])
+        onUiThread {
+            if (queue.isEmpty() || activeClient == null) return@onUiThread
+            queueIndex = (queueIndex + 1).mod(queue.size)
+            open(queue[queueIndex])
+        }
     }
 
     fun previous() {
-        if (queue.isEmpty() || activeClient == null) return
-        queueIndex = (queueIndex - 1 + queue.size).mod(queue.size)
-        open(queue[queueIndex])
+        onUiThread {
+            if (queue.isEmpty() || activeClient == null) return@onUiThread
+            queueIndex = (queueIndex - 1 + queue.size).mod(queue.size)
+            open(queue[queueIndex])
+        }
     }
 
     fun seek(seconds: Double) = onFxThread {
         val target = seconds.coerceAtLeast(0.0)
         mediaPlayer?.seek(javafx.util.Duration.seconds(target))
-        positionSeconds = target
-        notifyStateChanged()
+        onUiThread {
+            positionSeconds = target
+            notifyStateChanged()
+        }
     }
 
     fun changeVolume(value: Double) {
@@ -140,62 +154,92 @@ class DesktopPlayer(
                 mediaPlayer?.dispose()
                 val media = Media(client.streamUrl(song)).also { m ->
                     m.setOnError {
-                        if (generation != playbackGeneration) return@setOnError
-                        playing = false
-                        error = "Media: ${m.error?.message ?: "unsupported or unreachable stream"}"
-                        discord.clear()
-                        notifyStateChanged()
+                        onUiThread {
+                            if (generation != playbackGeneration) return@onUiThread
+                            playing = false
+                            error = "Media: ${m.error?.message ?: "unsupported or unreachable stream"}"
+                            discord.clear()
+                            notifyStateChanged()
+                        }
                     }
                 }
                 MediaPlayer(media).also { player ->
                     mediaPlayer = player
                     player.volume = volume
                     player.setOnPlaying {
-                        if (generation != playbackGeneration) return@setOnPlaying
-                        playing = true
-                        discord.update(song, true)
-                        notifyStateChanged()
+                        onUiThread {
+                            if (generation != playbackGeneration) return@onUiThread
+                            playing = true
+                            discord.update(song, true)
+                            notifyStateChanged()
+                        }
                     }
                     player.setOnPaused {
-                        if (generation != playbackGeneration) return@setOnPaused
-                        playing = false
-                        discord.update(song, false)
-                        notifyStateChanged()
+                        onUiThread {
+                            if (generation != playbackGeneration) return@onUiThread
+                            playing = false
+                            discord.update(song, false)
+                            notifyStateChanged()
+                        }
                     }
                     player.setOnStopped {
-                        if (generation != playbackGeneration) return@setOnStopped
-                        playing = false
-                        discord.update(song, false)
-                        notifyStateChanged()
+                        onUiThread {
+                            if (generation != playbackGeneration) return@onUiThread
+                            playing = false
+                            discord.update(song, false)
+                            notifyStateChanged()
+                        }
                     }
                     player.setOnEndOfMedia {
                         if (generation == playbackGeneration) next()
                     }
                     player.setOnError {
-                        if (generation != playbackGeneration) return@setOnError
-                        playing = false
-                        error = player.error?.message ?: "Playback failed (${song.suffix.ifBlank { "?" }})"
-                        discord.clear()
-                        notifyStateChanged()
+                        onUiThread {
+                            if (generation != playbackGeneration) return@onUiThread
+                            playing = false
+                            error = player.error?.message ?: "Playback failed (${song.suffix.ifBlank { "?" }})"
+                            discord.clear()
+                            notifyStateChanged()
+                        }
                     }
                     player.currentTimeProperty().addListener { _, _, time ->
                         val now = System.nanoTime()
                         if (now - lastPositionUpdateNanos >= POSITION_UPDATE_INTERVAL_NANOS) {
-                            positionSeconds = time.toSeconds().takeIf(Double::isFinite) ?: 0.0
+                            latestPositionSeconds = time.toSeconds().takeIf(Double::isFinite) ?: 0.0
+                            latestPositionGeneration = generation
                             lastPositionUpdateNanos = now
+                            publishLatestPosition()
                         }
                     }
                     player.totalDurationProperty().addListener { _, _, time ->
-                        durationSeconds = time.toSeconds().takeIf(Double::isFinite)
+                        val duration = time.toSeconds().takeIf(Double::isFinite)
                             ?: song.durationSeconds.toDouble()
+                        onUiThread {
+                            if (generation == playbackGeneration) durationSeconds = duration
+                        }
                     }
                     player.play()
                 }
             }.onFailure {
-                playing = false
-                error = it.message ?: "Playback failed"
-                discord.clear()
-                notifyStateChanged()
+                onUiThread {
+                    if (generation != playbackGeneration) return@onUiThread
+                    playing = false
+                    error = it.message ?: "Playback failed"
+                    discord.clear()
+                    notifyStateChanged()
+                }
+            }
+        }
+    }
+
+    private fun publishLatestPosition() {
+        if (!positionUpdateQueued.compareAndSet(false, true)) return
+        onUiThread {
+            positionUpdateQueued.set(false)
+            if (latestPositionGeneration != playbackGeneration) return@onUiThread
+            val position = latestPositionSeconds
+            if (abs(positionSeconds - position) >= MINIMUM_POSITION_CHANGE_SECONDS) {
+                positionSeconds = position
             }
         }
     }
@@ -209,7 +253,14 @@ class DesktopPlayer(
         if (Platform.isFxApplicationThread()) action() else Platform.runLater(action)
     }
 
+    private fun onUiThread(action: () -> Unit) {
+        if (EventQueue.isDispatchThread()) action() else EventQueue.invokeLater(action)
+    }
+
     private companion object {
-        const val POSITION_UPDATE_INTERVAL_NANOS = 100_000_000L
+        // Four UI updates per second keep the seek bar fluid without making the whole
+        // player chrome fight JavaFX's decoder for CPU time on Windows and Linux.
+        const val POSITION_UPDATE_INTERVAL_NANOS = 250_000_000L
+        const val MINIMUM_POSITION_CHANGE_SECONDS = 0.15
     }
 }

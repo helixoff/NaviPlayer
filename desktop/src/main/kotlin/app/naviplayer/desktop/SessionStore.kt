@@ -61,6 +61,10 @@ class SessionStore(
                     ?.let { DesktopAccent.valueOf(it) }
                     ?: DesktopAccent.Violet,
                 ambientGlow = values.getProperty("ambientGlow")?.toBooleanStrictOrNull() ?: true,
+                contentDensity = values.getProperty("contentDensity")
+                    ?.let { DesktopContentDensity.valueOf(it) }
+                    ?: DesktopContentDensity.Comfortable,
+                motionEffects = values.getProperty("motionEffects")?.toBooleanStrictOrNull() ?: true,
             )
         }.getOrDefault(AppearanceSettings())
     }
@@ -71,6 +75,8 @@ class SessionStore(
             setProperty("surfaceStyle", settings.surfaceStyle.name)
             setProperty("accent", settings.accent.name)
             setProperty("ambientGlow", settings.ambientGlow.toString())
+            setProperty("contentDensity", settings.contentDensity.name)
+            setProperty("motionEffects", settings.motionEffects.toString())
         }
         Files.newOutputStream(appearanceFile).use { values.store(it, "NaviPlayer desktop appearance") }
     }

@@ -3,6 +3,8 @@
 package app.naviplayer.desktop
 
 import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.EnterTransition
+import androidx.compose.animation.ExitTransition
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
@@ -11,6 +13,8 @@ import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -84,10 +88,17 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.input.key.Key
+import androidx.compose.ui.input.key.KeyEventType
+import androidx.compose.ui.input.key.key
+import androidx.compose.ui.input.key.onPreviewKeyEvent
+import androidx.compose.ui.input.key.type
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -260,6 +271,9 @@ private fun PlayerShell(
     var updateBusy by remember { mutableStateOf(false) }
     var updateError by remember { mutableStateOf<String?>(null) }
     var showLyrics by remember { mutableStateOf(false) }
+    var textInputFocused by remember { mutableStateOf(false) }
+    var spaceHeld by remember { mutableStateOf(false) }
+    var sessionQueue by remember(client) { mutableStateOf<List<Song>>(emptyList()) }
 
     suspend fun refreshUpdates() {
         if (updateChecking) return
@@ -283,16 +297,18 @@ private fun PlayerShell(
         try {
             coroutineScope {
                 val newAlbums = async { client.newestAlbums() }
-                val sessionQueue = async { client.allSongs().shuffled() }
+                val recommendations = async { client.randomSongs(80) }
                 albums = newAlbums.await()
-                // Один порядок создаётся при входе и живёт до полного закрытия приложения.
-                suggested = sessionQueue.await()
+                suggested = recommendations.await()
             }
         } catch (failure: Exception) {
             error = failure.message
         } finally {
             loading = false
         }
+    }
+
+    LaunchedEffect(client) {
         libraryLoading = true
         try {
             coroutineScope {
@@ -328,14 +344,17 @@ private fun PlayerShell(
         }
     }
 
-    LaunchedEffect(selectedCollection, suggested) {
+    LaunchedEffect(selectedCollection) {
         val collection = selectedCollection ?: return@LaunchedEffect
         collectionLoading = true
         collectionSongs = emptyList()
         collectionSongs = runCatching {
+            // Loading thousands of tracks at startup delayed first paint and competed with
+            // JavaFX playback. Build the stable session queue only when it is requested.
+            if (sessionQueue.isEmpty()) sessionQueue = client.allSongs().shuffled()
             when (collection) {
-                TrackCollection.AllTracks -> suggested
-                TrackCollection.LooseTracks -> suggested.filter(Song::isLoose)
+                TrackCollection.AllTracks -> sessionQueue
+                TrackCollection.LooseTracks -> sessionQueue.filter(Song::isLoose)
             }
         }.getOrElse {
             error = it.message
@@ -357,7 +376,30 @@ private fun PlayerShell(
         Brush.linearGradient(listOf(MaterialTheme.colorScheme.background, MaterialTheme.colorScheme.background))
     }
 
-    Column(Modifier.fillMaxSize().background(shellBackground)) {
+    val compact = LocalDesktopContentDensity.current == DesktopContentDensity.Compact
+    Column(
+        Modifier
+            .fillMaxSize()
+            .background(shellBackground)
+            .onPreviewKeyEvent { event ->
+                if (event.key != Key.Spacebar || textInputFocused || player.current == null) {
+                    false
+                } else {
+                    when (event.type) {
+                        KeyEventType.KeyDown -> {
+                            if (!spaceHeld) player.toggle()
+                            spaceHeld = true
+                            true
+                        }
+                        KeyEventType.KeyUp -> {
+                            spaceHeld = false
+                            true
+                        }
+                        else -> false
+                    }
+                }
+            },
+    ) {
         availableUpdate?.let { update ->
             DesktopUpdateBanner(
                 update = update,
@@ -379,7 +421,7 @@ private fun PlayerShell(
         }
         Row(Modifier.weight(1f).fillMaxWidth()) {
             NavigationRail(
-                modifier = Modifier.fillMaxHeight().width(96.dp),
+                modifier = Modifier.fillMaxHeight().width(if (compact) 82.dp else 96.dp),
                 containerColor = MaterialTheme.colorScheme.surfaceContainer,
                 header = {
                     Surface(Modifier.padding(vertical = 22.dp).size(50.dp), RoundedCornerShape(18.dp), MaterialTheme.colorScheme.primaryContainer) {
@@ -436,7 +478,10 @@ private fun PlayerShell(
                     loading || (page == DesktopPage.Library && libraryLoading) ||
                         (selectedCollection != null && collectionLoading),
                 ),
-                transitionSpec = { fadeIn(tween(180)) togetherWith fadeOut(tween(120)) },
+                transitionSpec = {
+                    if (appearance.motionEffects) fadeIn(tween(180)) togetherWith fadeOut(tween(120))
+                    else EnterTransition.None togetherWith ExitTransition.None
+                },
                 modifier = Modifier.weight(1f),
             ) { target ->
                 when {
@@ -458,11 +503,16 @@ private fun PlayerShell(
                         player = player,
                         onAlbum = { selectedPlaylist = null; selectedCollection = null; selectedAlbum = it },
                     )
-                    target.page == DesktopPage.Search -> SearchView(client, player, onAlbum = {
-                        selectedPlaylist = null
-                        selectedCollection = null
-                        selectedAlbum = it
-                    })
+                    target.page == DesktopPage.Search -> SearchView(
+                        client = client,
+                        player = player,
+                        onSearchFocusChanged = { textInputFocused = it },
+                        onAlbum = {
+                            selectedPlaylist = null
+                            selectedCollection = null
+                            selectedAlbum = it
+                        },
+                    )
                     target.page == DesktopPage.Library -> LibraryView(
                         albums = allAlbums,
                         playlists = playlists,
@@ -648,8 +698,11 @@ private fun AppearanceView(
         }
         item {
             Text("Accent", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.SemiBold)
-            Row(Modifier.padding(top = 14.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                DesktopAccent.entries.forEach { accent ->
+            LazyRow(
+                contentPadding = PaddingValues(top = 14.dp),
+                horizontalArrangement = Arrangement.spacedBy(12.dp),
+            ) {
+                items(DesktopAccent.entries) { accent ->
                     Surface(
                         modifier = Modifier
                             .size(width = 132.dp, height = 86.dp)
@@ -668,6 +721,20 @@ private fun AppearanceView(
                             Text(accent.label, maxLines = 2, fontWeight = FontWeight.SemiBold)
                         }
                     }
+                }
+            }
+        }
+        item {
+            Text("Layout density", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.SemiBold)
+            Row(Modifier.padding(top = 14.dp), horizontalArrangement = Arrangement.spacedBy(14.dp)) {
+                DesktopContentDensity.entries.forEach { density ->
+                    SurfaceChoice(
+                        title = density.label,
+                        subtitle = if (density == DesktopContentDensity.Compact) "More music on screen" else "Roomier controls",
+                        color = MaterialTheme.colorScheme.surfaceContainerHighest,
+                        selected = settings.contentDensity == density,
+                        onClick = { onChange(settings.copy(contentDensity = density)) },
+                    )
                 }
             }
         }
@@ -692,6 +759,31 @@ private fun AppearanceView(
                     Switch(
                         checked = settings.ambientGlow,
                         onCheckedChange = { onChange(settings.copy(ambientGlow = it)) },
+                    )
+                }
+            }
+        }
+        item {
+            Surface(
+                shape = MaterialTheme.shapes.large,
+                color = MaterialTheme.colorScheme.surfaceContainerHigh,
+                modifier = Modifier.fillMaxWidth(),
+            ) {
+                Row(
+                    Modifier.padding(horizontal = 22.dp, vertical = 18.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Column(Modifier.weight(1f)) {
+                        Text("Motion effects", fontWeight = FontWeight.SemiBold)
+                        Text(
+                            "Animate page changes; turn off for lower-power systems",
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            style = MaterialTheme.typography.bodySmall,
+                        )
+                    }
+                    Switch(
+                        checked = settings.motionEffects,
+                        onCheckedChange = { onChange(settings.copy(motionEffects = it)) },
                     )
                 }
             }
@@ -777,12 +869,33 @@ private fun HomeView(
 }
 
 @Composable
-private fun SearchView(client: SubsonicClient, player: DesktopPlayer, onAlbum: (Album) -> Unit) {
+private fun SearchView(
+    client: SubsonicClient,
+    player: DesktopPlayer,
+    onSearchFocusChanged: (Boolean) -> Unit,
+    onAlbum: (Album) -> Unit,
+) {
     var query by remember { mutableStateOf("") }
     var result by remember { mutableStateOf(SearchResult(emptyList(), emptyList())) }
     var busy by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf<String?>(null) }
     val scope = rememberCoroutineScope()
+
+    fun submitSearch() {
+        val submitted = query.trim()
+        if (submitted.isEmpty() || busy) return
+        scope.launch {
+            busy = true
+            error = null
+            try { result = client.search(submitted) }
+            catch (failure: Exception) { error = failure.message }
+            finally { busy = false }
+        }
+    }
+
+    androidx.compose.runtime.DisposableEffect(Unit) {
+        onDispose { onSearchFocusChanged(false) }
+    }
 
     Column(Modifier.fillMaxSize().padding(32.dp)) {
         Text("Search", style = MaterialTheme.typography.displaySmall, fontWeight = FontWeight.Bold)
@@ -791,23 +904,17 @@ private fun SearchView(client: SubsonicClient, player: DesktopPlayer, onAlbum: (
             OutlinedTextField(
                 query,
                 { query = it },
-                Modifier.weight(1f),
+                Modifier.weight(1f).onFocusChanged { onSearchFocusChanged(it.isFocused) },
                 singleLine = true,
                 placeholder = { Text("Songs and albums") },
                 leadingIcon = { Icon(Icons.Default.Search, null) },
+                keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
+                keyboardActions = KeyboardActions(onSearch = { submitSearch() }),
             )
             Button(
                 enabled = query.isNotBlank() && !busy,
                 modifier = Modifier.height(56.dp),
-                onClick = {
-                    scope.launch {
-                        busy = true
-                        error = null
-                        try { result = client.search(query.trim()) }
-                        catch (failure: Exception) { error = failure.message }
-                        finally { busy = false }
-                    }
-                },
+                onClick = ::submitSearch,
             ) { Text("Search") }
         }
         error?.let { Text(it, Modifier.padding(top = 12.dp), color = MaterialTheme.colorScheme.error) }
@@ -1040,13 +1147,15 @@ private fun PlaylistCard(playlist: Playlist, client: SubsonicClient, onClick: (P
 
 @Composable
 private fun SongRow(song: Song, client: SubsonicClient, selected: Boolean, playing: Boolean, onClick: () -> Unit) {
+    val compact = LocalDesktopContentDensity.current == DesktopContentDensity.Compact
     Surface(
         modifier = Modifier.fillMaxWidth().clip(MaterialTheme.shapes.medium).clickable(onClick = onClick),
         color = if (selected) MaterialTheme.colorScheme.secondaryContainer else Color.Transparent,
         shape = MaterialTheme.shapes.medium,
     ) {
-        Row(Modifier.padding(horizontal = 8.dp, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
-            Cover(client.coverUrl(song.coverArt, 160), Modifier.size(48.dp), 14.dp)
+        Row(Modifier.padding(horizontal = 8.dp, vertical = if (compact) 2.dp else 6.dp), verticalAlignment = Alignment.CenterVertically) {
+            val coverSize = if (compact) 42.dp else 48.dp
+            Cover(client.coverUrl(song.coverArt, 160), Modifier.size(coverSize), 14.dp)
             Column(Modifier.weight(1f).padding(horizontal = 12.dp)) {
                 Text(song.title, maxLines = 1, overflow = TextOverflow.Ellipsis, fontWeight = FontWeight.SemiBold)
                 Text(
@@ -1077,7 +1186,8 @@ private fun PlayerBar(
     val shownPosition = seekPreview?.toDouble() ?: player.positionSeconds
     val shownVolume = volumePreview?.toDouble() ?: player.volume
     Surface(color = MaterialTheme.colorScheme.surfaceContainerHigh, tonalElevation = 12.dp, shadowElevation = 16.dp) {
-        Row(Modifier.fillMaxWidth().height(112.dp).padding(horizontal = 22.dp), verticalAlignment = Alignment.CenterVertically) {
+        val compact = LocalDesktopContentDensity.current == DesktopContentDensity.Compact
+        Row(Modifier.fillMaxWidth().height(if (compact) 94.dp else 112.dp).padding(horizontal = 22.dp), verticalAlignment = Alignment.CenterVertically) {
             Cover(client.coverUrl(song.coverArt, 240), Modifier.size(72.dp), 18.dp)
             Column(Modifier.width(280.dp).padding(horizontal = 14.dp)) {
                 Text(song.title, maxLines = 1, overflow = TextOverflow.Ellipsis, fontWeight = FontWeight.Bold)

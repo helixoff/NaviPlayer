@@ -5,23 +5,36 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Shapes
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 
 enum class DesktopSurfaceStyle { Night, Amoled }
+
+enum class DesktopContentDensity(val label: String) {
+    Comfortable("Comfortable"),
+    Compact("Compact"),
+}
 
 enum class DesktopAccent(val label: String, val color: Color) {
     Coral("Coral", Color(0xFFFF8E78)),
     Violet("Violet", Color(0xFFC5A5FF)),
     Blue("Electric blue", Color(0xFF78A9FF)),
     Mint("Mint", Color(0xFF62DDBD)),
+    Rose("Rose", Color(0xFFFF86B7)),
+    Amber("Amber", Color(0xFFFFC45C)),
 }
 
 data class AppearanceSettings(
     val surfaceStyle: DesktopSurfaceStyle = DesktopSurfaceStyle.Night,
     val accent: DesktopAccent = DesktopAccent.Violet,
     val ambientGlow: Boolean = true,
+    val contentDensity: DesktopContentDensity = DesktopContentDensity.Comfortable,
+    val motionEffects: Boolean = true,
 )
+
+val LocalDesktopContentDensity = staticCompositionLocalOf { DesktopContentDensity.Comfortable }
 
 private fun naviColors(settings: AppearanceSettings) = darkColorScheme(
     primary = settings.accent.color,
@@ -52,5 +65,7 @@ private val NaviShapes = Shapes(
 
 @Composable
 fun NaviDesktopTheme(settings: AppearanceSettings, content: @Composable () -> Unit) {
-    MaterialTheme(colorScheme = naviColors(settings), shapes = NaviShapes, content = content)
+    CompositionLocalProvider(LocalDesktopContentDensity provides settings.contentDensity) {
+        MaterialTheme(colorScheme = naviColors(settings), shapes = NaviShapes, content = content)
+    }
 }

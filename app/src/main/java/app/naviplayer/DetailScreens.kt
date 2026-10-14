@@ -14,6 +14,7 @@ import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
@@ -166,6 +167,8 @@ fun ArtistScreen(api: SubsonicApi, name: String, id: String, onBack: () -> Unit,
 fun ProfileScreen(
     user: String, server: String, store: SessionStore,
     avatarUri: String?, onAvatarChanged: (String?) -> Unit,
+    appearance: AndroidAppearanceSettings,
+    onAppearanceChange: (AndroidAppearanceSettings) -> Unit,
     onBack: () -> Unit, onLogout: () -> Unit,
 ) {
     var searches by remember { mutableIntStateOf(store.history().size) }
@@ -211,6 +214,39 @@ fun ProfileScreen(
         Column(Modifier.padding(horizontal = Dim.Page)) {
             StatCard(searches.toString(), "searches", Modifier.fillMaxWidth())
             Spacer(Modifier.height(24.dp))
+            Text("appearance", Modifier.padding(start = 4.dp, bottom = 10.dp), color = Pal.Accent, style = MaterialTheme.typography.titleMedium)
+            TonalCard {
+                AppearanceChoices(
+                    title = "theme",
+                    choices = AppThemeMode.entries,
+                    selected = appearance.themeMode,
+                    label = AppThemeMode::label,
+                    onSelect = { onAppearanceChange(appearance.copy(themeMode = it)) },
+                )
+                SettingsDivider()
+                AppearanceChoices(
+                    title = "accent",
+                    choices = AppAccent.entries,
+                    selected = appearance.accent,
+                    label = AppAccent::label,
+                    onSelect = { onAppearanceChange(appearance.copy(accent = it)) },
+                )
+                SettingsDivider()
+                Row(
+                    Modifier.fillMaxWidth().padding(horizontal = 18.dp, vertical = 14.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Column(Modifier.weight(1f)) {
+                        Text("AMOLED black", style = MaterialTheme.typography.titleMedium)
+                        Text("Use true black surfaces in dark mode", color = Pal.Subtle, style = MaterialTheme.typography.bodySmall)
+                    }
+                    Switch(
+                        checked = appearance.amoled,
+                        onCheckedChange = { onAppearanceChange(appearance.copy(amoled = it)) },
+                    )
+                }
+            }
+            Spacer(Modifier.height(24.dp))
             Text("this account", Modifier.padding(start = 4.dp, bottom = 10.dp), color = Pal.Accent, style = MaterialTheme.typography.titleMedium)
 
             // Группа строк в одной карточке с разделителями — как в настройках Android.
@@ -249,6 +285,31 @@ fun ProfileScreen(
                 Icon(Icons.AutoMirrored.Filled.Logout, null); Spacer(Modifier.width(8.dp)); Text("log out")
             }
             Spacer(Modifier.height(24.dp))
+        }
+    }
+}
+
+@Composable
+private fun <T> AppearanceChoices(
+    title: String,
+    choices: List<T>,
+    selected: T,
+    label: (T) -> String,
+    onSelect: (T) -> Unit,
+) {
+    Column(Modifier.fillMaxWidth().padding(vertical = 12.dp)) {
+        Text(title, Modifier.padding(horizontal = 18.dp), style = MaterialTheme.typography.titleMedium)
+        Row(
+            Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(horizontal = 18.dp, vertical = 6.dp),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            choices.forEach { choice ->
+                FilterChip(
+                    selected = choice == selected,
+                    onClick = { onSelect(choice) },
+                    label = { Text(label(choice)) },
+                )
+            }
         }
     }
 }

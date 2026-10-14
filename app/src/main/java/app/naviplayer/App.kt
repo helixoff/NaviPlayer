@@ -35,7 +35,12 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.delay
 
 @Composable
-fun Root(store: SessionStore, holder: PlayerHolder) {
+fun Root(
+    store: SessionStore,
+    holder: PlayerHolder,
+    appearance: AndroidAppearanceSettings,
+    onAppearanceChange: (AndroidAppearanceSettings) -> Unit,
+) {
     var creds by remember { mutableStateOf(store.load()) }
     val c = creds
     if (c == null) {
@@ -45,12 +50,24 @@ fun Root(store: SessionStore, holder: PlayerHolder) {
         LaunchedEffect(api) {
             holder.api = api
         }
-        AppScaffold(api, store, holder, c) { holder.api = null; store.clear(); creds = null }
+        AppScaffold(api, store, holder, c, appearance, onAppearanceChange) {
+            holder.api = null
+            store.clear()
+            creds = null
+        }
     }
 }
 
 @Composable
-fun AppScaffold(api: SubsonicApi, store: SessionStore, holder: PlayerHolder, creds: Credentials, onLogout: () -> Unit) {
+fun AppScaffold(
+    api: SubsonicApi,
+    store: SessionStore,
+    holder: PlayerHolder,
+    creds: Credentials,
+    appearance: AndroidAppearanceSettings,
+    onAppearanceChange: (AndroidAppearanceSettings) -> Unit,
+    onLogout: () -> Unit,
+) {
     var tab by remember { mutableIntStateOf(0) }
     val stack = remember { mutableStateListOf<Dest>() }
     var showPlayer by remember { mutableStateOf(false) }
@@ -156,6 +173,8 @@ fun AppScaffold(api: SubsonicApi, store: SessionStore, holder: PlayerHolder, cre
                             is Dest.ArtistD -> ArtistScreen(api, top.name, top.id, ::pop, open)
                             Dest.Profile -> ProfileScreen(
                                 creds.user, creds.url, store, avatarUri,
+                                appearance = appearance,
+                                onAppearanceChange = onAppearanceChange,
                                 onAvatarChanged = { avatarUri = it },
                                 onBack = ::pop,
                                 onLogout = onLogout,

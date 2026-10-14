@@ -14,6 +14,18 @@ Keep this list short and actionable. Completed work belongs in Git history and
       NaviPlayer should pass handled media-key events down the Windows hook chain
       or consume them to prevent two players responding.
 - [ ] Verify reconnection when Discord starts after NaviPlayer.
+- [ ] In the packaged desktop app, focus a song row and confirm Space only
+      pauses/resumes the current track; confirm Enter submits Search and spaces
+      can still be typed in its field.
+- [ ] Compare playback on Windows and Linux before/after the coalesced 4 Hz UI
+      progress updates, including while synced lyrics are open.
+
+## P0 — validate Android appearance controls
+
+- [ ] Run `:app:assembleDebug` with an Android SDK installed; the 2026-10-14
+      environment had JDK 22 but no Android SDK.
+- [ ] On Android 11 and Android 12+, verify System/Light/Dark, all custom
+      accents, Dynamic color fallback, and AMOLED surfaces across relaunches.
 
 ## P0 — restore reliable Windows packaging
 
