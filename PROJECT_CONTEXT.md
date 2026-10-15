@@ -48,6 +48,34 @@ then webhook and Discord resources are released.
 
 ## Recent work and decisions
 
+### Reliable now-playing artwork — 2026-10-14
+
+- The public `/api/now-playing` response advertised `/api/now-playing/art`, but
+  that artwork route returned HTTP 404 while clients were posting private
+  Navidrome cover URLs. An external server cannot fetch those URLs when the
+  Navidrome instance is reachable only over LAN or Tailscale.
+- Android and Desktop webhook reporters now fetch artwork locally, bound the
+  download to 2 MiB, resize it to at most 192 px, encode it as JPEG, and put a
+  cached data URI in the existing `albumArtUrl` field. This keeps the receiving
+  API contract unchanged while making the image self-contained.
+- Artwork conversion and webhook delivery run off the playback/UI threads.
+  Each reporter caches the current cover, and failures remain optional: a
+  missing or unsupported image sends `null` and never interrupts playback.
+- Private Navidrome cover URLs, including their query-string credentials, are
+  no longer included in the JSON body. The existing authentication headers are
+  unchanged for compatibility with the webhook endpoint.
+
+Verification performed on Windows:
+
+- The live public API was read without credentials: `/api/now-playing` returned
+  an artwork proxy URL while that proxy returned HTTP 404, confirming the
+  observed placeholder failure.
+- `:desktop:compileKotlin` succeeded with JDK 22. The Kotlin daemon could not
+  write to the host profile in the managed environment, so Gradle completed via
+  its in-process fallback compiler.
+- Android compilation and end-to-end posting remain unverified locally because
+  no Android SDK or test Navidrome session is available.
+
 ### Desktop responsiveness, keyboard controls, and appearance — 2026-10-14
 
 - Desktop Home no longer waits for the complete (up to 6,000-track) library

@@ -93,6 +93,10 @@ The desktop workflow builds Linux and Windows in parallel. Android tags use `v2.
 
 Credentials and the optional profile image are stored locally on the device. The avatar is not uploaded by NaviPlayer. Music, artwork and lyrics are requested directly from the server address you provide.
 
+The project-specific now-playing integration sends track metadata and a small
+192 px artwork thumbnail to `feepiwakura.lol`. The thumbnail is encoded locally;
+the private authenticated Navidrome artwork URL is not included in the JSON.
+
 ## License
 
 Source code is available under the [MIT License](LICENSE). The bundled Google Sans font files retain their Open Font License notice in `app/src/main/res/raw/google_sans_ofl.txt`.

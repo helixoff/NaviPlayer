@@ -27,6 +27,17 @@ Keep this list short and actionable. Completed work belongs in Git history and
 - [ ] On Android 11 and Android 12+, verify System/Light/Dark, all custom
       accents, Dynamic color fallback, and AMOLED surfaces across relaunches.
 
+## P0 — validate now-playing artwork
+
+- [ ] Install/run the updated Desktop client against the real Navidrome server,
+      change tracks, and confirm `/api/now-playing/art` returns HTTP 200 with the
+      correct cover instead of the current HTTP 404 placeholder.
+- [ ] Repeat from Android after `:app:assembleDebug` is available and confirm
+      repeated 15-second reports reuse the cached cover without playback stalls.
+- [ ] Confirm the webhook server accepts the approximately 192 px JPEG data URI
+      within its configured JSON body limit; lower the thumbnail size if it
+      returns HTTP 413.
+
 ## P0 — restore reliable Windows packaging
 
 - [ ] Reproduce `:desktop:packageMsi` outside the Codex sandbox.
